@@ -1,7 +1,7 @@
 {
-  "name": "nwscript-compiler",
-  "displayName": "NWScript Compiler",
-  "description": "Standalone NWScript compilation for VS Code and VS Code for the Web using WebAssembly.",
+  "name": "nwscript",
+  "displayName": "NWScript",
+  "description": "NWScript development tools for VS Code and compatible editors, with WebAssembly compilation, IntelliSense, navigation, and NCS inspection.",
   "version": "0.1.0",
   "publisher": "KobaltBlu",
   "license": "GPL-3.0-only",
@@ -22,7 +22,11 @@
     "ncs",
     "kotor",
     "kotor2",
-    "wasm"
+    "knights of the old republic",
+    "modding",
+    "wasm",
+    "compiler",
+    "intellisense"
   ],
   "browser": "./dist/web/extension.js",
   "capabilities": {
@@ -150,7 +154,7 @@
       ]
     },
     "configuration": {
-      "title": "NWScript Compiler",
+      "title": "NWScript",
       "properties": {
         "nwscript.gameTarget": {
           "type": "string",
@@ -246,7 +250,10 @@
     "watch": "node ./scripts/build.mjs --watch",
     "package": "npm run build && vsce package",
     "test-web": "npm run build && vscode-test-web --browserType=chromium --extensionDevelopmentPath=. .",
-    "vscode:prepublish": "npm run build"
+    "vscode:prepublish": "npm run build",
+    "package:list": "npm run build && vsce ls",
+    "publish:vscode": "npm run build && vsce publish",
+    "publish:openvsx": "npm run build && ovsx publish"
   },
   "dependencies": {
     "@neverwinter/nwscript-wasm": "https://codeload.github.com/KobaltBlu/nwscript-wasm/tar.gz/refs/heads/master"
@@ -256,6 +263,17 @@
     "@vscode/test-web": "^0.0.81",
     "@vscode/vsce": "^3.6.0",
     "esbuild": "^0.25.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "ovsx": "^0.10.4"
+  },
+  "homepage": "https://github.com/KobaltBlu/nwscript-vscode",
+  "bugs": {
+    "url": "https://github.com/KobaltBlu/nwscript-vscode/issues"
+  },
+  "icon": "assets/icon.png",
+  "pricing": "Free",
+  "galleryBanner": {
+    "color": "#0b1320",
+    "theme": "dark"
   }
 }
