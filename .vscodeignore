@@ -7,6 +7,10 @@ tsconfig.json
 package-lock.json
 .gitignore
 *.vsix
-*.map
+**/*.map
+PUBLISHING.md
+prepare-*.patch
+nwscript.nss
+nss/**
 npm-debug.log*
 .DS_Store
