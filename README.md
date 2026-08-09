@@ -19,6 +19,7 @@ NWScript Workbench Home provides:
 - a clear explanation of how `nwscript.nss` is resolved for each script
 - recommended workspace layouts for K1, K2, and custom game targets
 - offline help for project language specifications, includes, configuration, and troubleshooting
+- a right-side Knowledge Base with focused articles for language-spec resolution and multi-game project layout
 - links to the extension and compiler repositories
 
 The Home tab opens automatically once on first run and remains available from the Command Palette afterward.
@@ -28,6 +29,8 @@ The Home tab opens automatically once on first run and remains available from th
 Run **NWScript Workbench: Browse Scripts** to search the decompiled KOTOR and TSL source catalog maintained by [KOTOR Community Patches](https://github.com/KOTORCommunityPatches/Vanilla_KOTOR_Script_Source).
 
 The browser fetches the repository catalog from GitHub. Search operates locally over script names and repository paths; selecting a result fetches only that script for preview. You can open a source copy in an untitled NWScript editor or download it through VS Code's URI-aware save dialog into a desktop, browser, or virtual workspace.
+
+![NWScript Workbench Script Browser showing searchable KOTOR and TSL source with an inline preview](assets/ss-script-browser.png)
 
 No upstream script source is packaged with NWScript Workbench. An internet connection is required, and downloaded sources remain subject to the upstream repository and game-content terms.
 
@@ -216,6 +219,8 @@ Displays the target names compiled into the WASM package.
 Opening an `.ncs` file uses the extension's readonly **NWScript NCS Hex** custom editor by default. The primary editor shows the binary as a conventional 16-byte-per-row hex dump with offsets and an ASCII column.
 
 At the same time, the extension disassembles the NCS with the active custom, project-detected, or embedded language specification and opens `<name>.ncsasm` beside the hex view as a **preview tab** without stealing focus.
+
+![NWScript Workbench NCS hex editor and side-by-side assembly disassembly view](assets/ss-script-dissasembler-with-hex-and-asm-views.png)
 
 If the language specification cannot be resolved, the hex view still opens normally and the assembly preview displays the disassembly error.
 
@@ -451,6 +456,8 @@ See `THIRD_PARTY_NOTICES.md` for the upstream compiler dependency.
 ## Engine-aware editor intelligence
 
 The extension builds IntelliSense directly from the active `nwscript.nss` language specification. Custom and auto-detected project specifications are parsed into a cached engine API model, so changing the active spec changes the editor API without rebuilding the extension.
+
+![NWScript editor showing engine-aware IntelliSense and API documentation](assets/ss-script-editor-with-intellisense.png)
 
 The NWScript editor provides:
 

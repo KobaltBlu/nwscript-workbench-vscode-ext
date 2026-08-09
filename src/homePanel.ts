@@ -317,6 +317,29 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
     main { padding: 28px 0 56px; }
     .page { display: none; }
     .page.active { display: block; }
+    .home-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 24px; align-items: start; }
+    .home-primary { display: grid; gap: 14px; }
+    .home-primary .card { grid-column: auto; }
+    .kb-rail { border-left: 1px solid var(--vscode-panel-border); padding-left: 20px; }
+    .kb-rail h2 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+    .kb-link {
+      width: 100%;
+      display: block;
+      border: 0;
+      border-radius: 4px;
+      padding: 9px 10px;
+      text-align: left;
+      cursor: pointer;
+      color: var(--vscode-textLink-foreground);
+      background: transparent;
+    }
+    .kb-link:hover { background: var(--vscode-list-hoverBackground); }
+    .kb-link strong { display: block; font-weight: 600; }
+    .kb-link span { display: block; margin-top: 3px; color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1.4; }
+    .kb-article { max-width: 850px; }
+    .article-back { margin-bottom: 18px; }
+    .article-kicker { color: var(--vscode-descriptionForeground); text-transform: uppercase; letter-spacing: .08em; font-size: 11px; font-weight: 700; }
+    .kb-article > h1 { margin: 6px 0 18px; font-size: 27px; }
     .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
     .card {
       grid-column: span 6;
@@ -416,7 +439,9 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
     a { color: var(--vscode-textLink-foreground); }
     @media (max-width: 760px) {
       .hero-inner, main { width: min(100% - 28px, 1120px); }
-            .card { grid-column: 1 / -1; }
+      .card { grid-column: 1 / -1; }
+      .home-layout { grid-template-columns: 1fr; }
+      .kb-rail { border-left: 0; border-top: 1px solid var(--vscode-panel-border); padding: 18px 0 0; }
       .setting { align-items: flex-start; }
       .kv { grid-template-columns: 1fr; }
     }
@@ -440,8 +465,15 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
 
     <main>
       <section id="page-home" class="page active">
-        <div class="grid">
-          <article class="card full">
+        <div class="home-layout">
+          <div class="home-primary">
+          <article class="card">
+            <h2>Script Browser</h2>
+            <p class="muted">Search and preview decompiled KOTOR and TSL scripts from the KOTOR Community Patches repository, then download only the scripts you choose.</p>
+            <div class="actions"><button class="button" data-action="openScriptBrowser">Browse Scripts</button></div>
+          </article>
+
+          <article class="card">
             <h2>NWScript environment</h2>
             <div class="${specClass}">${escapeHtml(options.specStatus.label)}</div>
             <div class="muted">${escapeHtml(options.specStatus.detail)}</div>
@@ -459,31 +491,38 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
               <button class="button secondary" data-action="refresh">Refresh</button>
             </div>
           </article>
+          </div>
 
-          <article class="card full">
-            <h2>How nwscript.nss is resolved</h2>
-            <p class="muted">Resolution is scoped to the file you are working with and its workspace folder. Explicit configuration always wins; automatic project discovery is used only when no target has been pinned.</p>
-            <ol class="resolution-list">
-              <li><strong>Explicit NWScript.nss</strong><code>nwscript.languageSpec</code> is used when configured for the active resource/workspace folder.</li>
-              <li><strong>Explicit embedded target</strong>An explicitly selected compiler target is used when no NWScript.nss file is configured.</li>
-              <li><strong>Workspace-root nwscript.nss</strong>During auto-detection, a file at the workspace-folder root is authoritative for that workspace folder.</li>
-              <li><strong>Nearest ancestor nwscript.nss</strong>If there is no workspace-root spec, the extension walks the active script's folder ancestry and uses the closest matching <code>nwscript.nss</code>. Deeper folders can therefore define a more specific game/custom API for their descendants.</li>
-              <li><strong>Single discovered spec</strong>If no ancestor contains a spec but exactly one <code>nwscript.nss</code> exists in the workspace folder, that file is used.</li>
-              <li><strong>Ambiguous</strong>If multiple unrelated specs remain, the extension refuses to guess and asks you to choose one explicitly.</li>
-            </ol>
-            <div class="callout"><strong>Important:</strong> a workspace-root <code>nwscript.nss</code> is a workspace-wide authority. If you want separate K1, K2, or custom script trees to resolve independently, do not place a competing <code>nwscript.nss</code> at the common workspace root.</div>
-          </article>
+          <aside class="kb-rail">
+            <h2>Knowledge Base</h2>
+            <button class="kb-link" data-page-link="kb-resolution"><strong>How nwscript.nss is resolved</strong><span>Understand target precedence and project discovery.</span></button>
+            <button class="kb-link" data-page-link="kb-project-layout"><strong>Recommended multi-game project layout</strong><span>Keep KOTOR, TSL, and custom APIs isolated.</span></button>
+          </aside>
+        </div>
+      </section>
 
-          <article class="card full">
-            <h2>Script Browser</h2>
-            <p class="muted">Search and preview decompiled KOTOR and TSL scripts from the KOTOR Community Patches repository, then download only the scripts you choose.</p>
-            <div class="actions"><button class="button" data-action="openScriptBrowser">Browse Scripts</button></div>
-          </article>
+      <section id="page-kb-resolution" class="page docs kb-article">
+        <button class="button secondary article-back" data-page-link="home">← Back to Home</button>
+        <div class="article-kicker">Knowledge Base</div>
+        <h1>How nwscript.nss is resolved</h1>
+        <p>Resolution is scoped to the file you are working with and its workspace folder. Explicit configuration always wins; automatic project discovery is used only when no target has been pinned.</p>
+        <ol class="resolution-list">
+          <li><strong>Explicit NWScript.nss</strong><code>nwscript.languageSpec</code> is used when configured for the active resource/workspace folder.</li>
+          <li><strong>Explicit embedded target</strong>An explicitly selected compiler target is used when no NWScript.nss file is configured.</li>
+          <li><strong>Workspace-root nwscript.nss</strong>During auto-detection, a file at the workspace-folder root is authoritative for that workspace folder.</li>
+          <li><strong>Nearest ancestor nwscript.nss</strong>If there is no workspace-root spec, the extension walks the active script's folder ancestry and uses the closest matching <code>nwscript.nss</code>. Deeper folders can therefore define a more specific game/custom API for their descendants.</li>
+          <li><strong>Single discovered spec</strong>If no ancestor contains a spec but exactly one specification exists in the workspace folder, that file is used.</li>
+          <li><strong>Ambiguous</strong>If multiple unrelated specs remain, NWScript Workbench refuses to guess and asks you to choose one explicitly.</li>
+        </ol>
+        <div class="callout"><strong>Important:</strong> a workspace-root <code>nwscript.nss</code> is a workspace-wide authority. If you want separate KOTOR, TSL, or custom script trees to resolve independently, do not place a competing <code>nwscript.nss</code> at the common workspace root.</div>
+      </section>
 
-          <article class="card full">
-            <h2>Recommended multi-game project layout</h2>
-            <p class="muted">Put each game's scripts under its own folder and place that game's <code>nwscript.nss</code> at the root of the game folder. Every descendant script naturally resolves against the closest applicable language specification.</p>
-            <pre>My NWScript Workspace/
+      <section id="page-kb-project-layout" class="page docs kb-article">
+        <button class="button secondary article-back" data-page-link="home">← Back to Home</button>
+        <div class="article-kicker">Knowledge Base</div>
+        <h1>Recommended multi-game project layout</h1>
+        <p>Put each game's scripts under its own folder and place that game's <code>nwscript.nss</code> at the root of the game folder. Every descendant script naturally resolves against the closest applicable language specification.</p>
+        <pre>My NWScript Workspace/
 ├─ kotor1/
 │  ├─ nwscript.nss
 │  ├─ includes/
@@ -500,9 +539,7 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
 └─ custom-game/
    ├─ nwscript.nss
    └─ scripts/</pre>
-            <p class="muted tree-note"><code>kotor1/scripts/modules/tar_m03aa.nss</code> resolves to <code>kotor1/nwscript.nss</code>, while <code>kotor2/scripts/a_104per.nss</code> resolves independently to <code>kotor2/nwscript.nss</code>.</p>
-          </article>
-        </div>
+        <p><code>kotor1/scripts/modules/tar_m03aa.nss</code> resolves to <code>kotor1/nwscript.nss</code>, while <code>kotor2/scripts/a_104per.nss</code> resolves independently to <code>kotor2/nwscript.nss</code>.</p>
       </section>
 
       <section id="page-configuration" class="page">
@@ -648,6 +685,10 @@ void main() {
 
     document.querySelectorAll('.nav button').forEach((button) => {
       button.addEventListener('click', () => selectPage(button.dataset.page));
+    });
+
+    document.querySelectorAll('[data-page-link]').forEach((button) => {
+      button.addEventListener('click', () => selectPage(button.dataset.pageLink));
     });
 
     document.querySelectorAll('[data-action]').forEach((button) => {
