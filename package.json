@@ -1,13 +1,13 @@
 {
-  "name": "nwscript",
-  "displayName": "NWScript",
-  "description": "NWScript development tools for VS Code and compatible editors, with WebAssembly compilation, IntelliSense, navigation, and NCS inspection.",
+  "name": "nwscript-workbench",
+  "displayName": "NWScript Workbench",
+  "description": "A complete NWScript workbench for VS Code and compatible editors, with WebAssembly compilation, IntelliSense, navigation, and NCS inspection.",
   "version": "0.1.0",
   "publisher": "KobaltBlu",
   "license": "GPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "https://github.com/KobaltBlu/nwscript-wasm-vscode-ext.git"
+    "url": "https://github.com/KobaltBlu/nwscript-workbench-vscode-ext.git"
   },
   "engines": {
     "vscode": "^1.100.0"
@@ -26,6 +26,7 @@
     "modding",
     "wasm",
     "compiler",
+    "workbench",
     "intellisense"
   ],
   "browser": "./dist/web/extension.js",
@@ -95,29 +96,29 @@
     "commands": [
       {
         "command": "nwscript.openHome",
-        "title": "NWScript: Open Home",
+        "title": "NWScript Workbench: Open Home",
         "icon": "$(home)"
       },
       {
         "command": "nwscript.compileCurrentFile",
-        "title": "NWScript: Compile Current File",
+        "title": "NWScript Workbench: Compile Current File",
         "icon": "$(play)"
       },
       {
         "command": "nwscript.selectCompilerTarget",
-        "title": "NWScript: Select Compiler Target"
+        "title": "NWScript Workbench: Select Compiler Target"
       },
       {
         "command": "nwscript.selectLanguageSpec",
-        "title": "NWScript: Select nwscript.nss"
+        "title": "NWScript Workbench: Select nwscript.nss"
       },
       {
         "command": "nwscript.showEmbeddedTargets",
-        "title": "NWScript: Show Embedded Game Targets"
+        "title": "NWScript Workbench: Show Embedded Game Targets"
       },
       {
         "command": "nwscript.disassembleNcs",
-        "title": "NWScript: Disassemble NCS"
+        "title": "NWScript Workbench: Disassemble NCS"
       }
     ],
     "menus": {
@@ -154,7 +155,7 @@
       ]
     },
     "configuration": {
-      "title": "NWScript",
+      "title": "NWScript Workbench",
       "properties": {
         "nwscript.gameTarget": {
           "type": "string",
@@ -234,7 +235,7 @@
     "customEditors": [
       {
         "viewType": "nwscript.ncsHex",
-        "displayName": "NWScript NCS Hex",
+        "displayName": "NWScript Workbench NCS Hex",
         "selector": [
           {
             "filenamePattern": "*.ncs"
@@ -266,9 +267,9 @@
     "typescript": "^5.9.0",
     "ovsx": "^0.10.4"
   },
-  "homepage": "https://github.com/KobaltBlu/nwscript-wasm-vscode-ext",
+  "homepage": "https://github.com/KobaltBlu/nwscript-workbench-vscode-ext",
   "bugs": {
-    "url": "https://github.com/KobaltBlu/nwscript-wasm-vscode-ext/issues"
+    "url": "https://github.com/KobaltBlu/nwscript-workbench-vscode-ext/issues"
   },
   "icon": "assets/icon.png",
   "pricing": "Free",

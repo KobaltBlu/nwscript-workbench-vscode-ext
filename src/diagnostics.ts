@@ -44,7 +44,7 @@ export class CompilerDiagnostics implements vscode.Disposable {
         message.trim() || text,
         vscode.DiagnosticSeverity.Error,
       );
-      diagnostic.source = "NWScript";
+      diagnostic.source = "NWScript Workbench";
       diagnostic.code = "compile";
 
       const key = uri.toString();
@@ -62,7 +62,7 @@ export class CompilerDiagnostics implements vscode.Disposable {
         error.trim(),
         vscode.DiagnosticSeverity.Error,
       );
-      diagnostic.source = "NWScript";
+      diagnostic.source = "NWScript Workbench";
       grouped.set(sourceUri.toString(), { uri: sourceUri, diagnostics: [diagnostic] });
     }
 

@@ -1,14 +1,14 @@
-# NWScript Compiler for VS Code
+# NWScript Workbench
 
-Standalone NWScript compilation for **VS Code Desktop** and **VS Code for the Web** (`vscode.dev`, `github.dev`, Codespaces web editor).
+Complete NWScript development tools for **VS Code Desktop** and **VS Code for the Web** (`vscode.dev`, `github.dev`, Codespaces web editor).
 
 The extension uses [`KobaltBlu/nwscript-wasm`](https://github.com/KobaltBlu/nwscript-wasm/tree/master), which packages the native NWScript compiler as WebAssembly. The compiler JavaScript is bundled into the extension and the `.wasm` binary is shipped inside the VSIX, so **no native compiler, Nim, Python, Emscripten, or network access is required at runtime**.
 
-## NWScript Home
+## NWScript Workbench Home
 
-Run **NWScript: Open Home** to open the extension control center in an editor tab.
+Run **NWScript Workbench: Open Home** to open the extension control center in an editor tab.
 
-NWScript Home provides:
+NWScript Workbench Home provides:
 
 - current workspace and active language-specification status
 - language-specification selection and project auto-detection controls
@@ -165,7 +165,7 @@ The generated VSIX contains the bundled extension JavaScript and compiler WASM. 
 
 ## Commands
 
-### NWScript: Compile Current File
+### NWScript Workbench: Compile Current File
 
 Compile the active or Explorer-selected `.nss` file.
 
@@ -184,7 +184,7 @@ script.ncs
 script.ndb
 ```
 
-### NWScript: Select Compiler Target
+### NWScript Workbench: Select Compiler Target
 
 Choose either:
 
@@ -193,11 +193,11 @@ Choose either:
 
 Embedded targets are optional. A WASM build containing no embedded language specifications is fully supported.
 
-### NWScript: Select Custom Language Specification
+### NWScript Workbench: Select Custom Language Specification
 
 Opens VS Code's URI-aware file picker and stores the selected language specification in the current workspace/workspace-folder configuration. This works with desktop files, `vscode.dev`, `github.dev`, and virtual workspace file-system providers.
 
-### NWScript: Show Embedded Game Targets
+### NWScript Workbench: Show Embedded Game Targets
 
 Displays the target names compiled into the WASM package.
 
@@ -209,7 +209,7 @@ At the same time, the extension disassembles the NCS with the active custom, pro
 
 If the language specification cannot be resolved, the hex view still opens normally and the assembly preview displays the disassembly error.
 
-### NWScript: Disassemble NCS
+### NWScript Workbench: Disassemble NCS
 
 Reads an `.ncs` file, calls the WASM disassembler, and opens the same named `<name>.ncsasm` preview used by the automatic NCS viewer.
 
@@ -217,7 +217,7 @@ Reads an `.ncs` file, calls the WASM disassembler, and opens the same named `<na
 
 The extension does not require the WASM package to contain game-specific `nwscript.nss` files. Users can explicitly select a custom language specification at runtime.
 
-Use **NWScript: Select Compiler Target** and choose **Custom Language Specification: Choose nwscript.nss...**, or run **NWScript: Select Custom Language Specification** directly.
+Use **NWScript Workbench: Select Compiler Target** and choose **Custom Language Specification: Choose nwscript.nss...**, or run **NWScript Workbench: Select Custom Language Specification** directly.
 
 The selected resource is read through `vscode.workspace.fs`, not Node filesystem APIs. That means the language spec can come from a normal desktop workspace or from a virtual/browser workspace provider.
 

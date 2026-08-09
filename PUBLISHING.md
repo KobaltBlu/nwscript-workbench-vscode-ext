@@ -30,7 +30,7 @@ npm run publish:openvsx -- -p <token>
 The permanent extension identifier is:
 
 ```text
-KobaltBlu.nwscript
+KobaltBlu.nwscript-workbench
 ```
 
 Do not change `publisher` or `name` after the first public release unless intentionally creating a new marketplace listing.

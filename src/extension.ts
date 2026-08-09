@@ -73,7 +73,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     refreshCompiler();
     void vscode.window.showInformationMessage(
-      `NWScript NWScript.nss: using ${basename(uri)} as the language specification.`,
+      `NWScript Workbench: using ${basename(uri)} as the language specification.`,
     );
     return true;
   };
@@ -114,7 +114,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ];
 
     const selected = await vscode.window.showQuickPick(items, {
-      title: "Select NWScript Compiler Target",
+      title: "NWScript Workbench: Select Compiler Target",
       placeHolder:
         detectedSpecs.length > 0
           ? "Choose a detected project spec, NWScript.nss, or an embedded target"
@@ -318,5 +318,5 @@ function configurationTarget(scope?: vscode.Uri): vscode.ConfigurationTarget {
 
 function showError(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
-  void vscode.window.showErrorMessage(`NWScript: ${message}`);
+  void vscode.window.showErrorMessage(`NWScript Workbench: ${message}`);
 }

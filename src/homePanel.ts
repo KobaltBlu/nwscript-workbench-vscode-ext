@@ -41,7 +41,7 @@ export class NWScriptHomePanel implements vscode.Disposable {
 
     const panel = vscode.window.createWebviewPanel(
       HOME_VIEW_TYPE,
-      "NWScript Home",
+      "NWScript Workbench",
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -143,7 +143,7 @@ export class NWScriptHomePanel implements vscode.Disposable {
 
         case "openExtensionRepository":
           await vscode.env.openExternal(
-            vscode.Uri.parse("https://github.com/KobaltBlu/nwscript-vscode"),
+            vscode.Uri.parse("https://github.com/KobaltBlu/nwscript-workbench-vscode-ext"),
           );
           break;
 
@@ -153,7 +153,7 @@ export class NWScriptHomePanel implements vscode.Disposable {
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      void vscode.window.showErrorMessage(`NWScript Home: ${detail}`);
+      void vscode.window.showErrorMessage(`NWScript Workbench: ${detail}`);
     } finally {
       if (message.type !== "refresh") {
         await this.refresh(currentScope() ?? this.scope);
@@ -264,7 +264,7 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NWScript Home</title>
+  <title>NWScript Workbench</title>
   <style>
     :root { color-scheme: light dark; }
     * { box-sizing: border-box; }
@@ -420,10 +420,10 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
   <div class="shell">
     <section class="hero">
       <div class="hero-inner">
-        <div class="eyebrow">NWScript Compiler · ${escapeHtml(options.workspaceName)}</div>
-        <h1>NWScript Home</h1>
+        <div class="eyebrow">NWScript Workbench · ${escapeHtml(options.workspaceName)}</div>
+        <h1>NWScript Workbench</h1>
         <p class="subtitle">Configure the NWScript environment, understand how language specifications are resolved, and keep each game's scripts isolated to the correct API.</p>
-        <nav class="nav" aria-label="NWScript Home sections">
+        <nav class="nav" aria-label="NWScript Workbench sections">
           <button class="active" data-page="home">Home</button>
           <button data-page="configuration">Configuration</button>
           <button data-page="help">Help</button>
@@ -603,8 +603,8 @@ void main() {
       <section id="page-about" class="page">
         <div class="grid">
           <article class="card full">
-            <h2>About NWScript Compiler</h2>
-            <p class="muted">A standalone VS Code and VS Code for the Web frontend for the WebAssembly NWScript compiler.</p>
+            <h2>About NWScript Workbench</h2>
+            <p class="muted">Complete NWScript development tools for VS Code and VS Code for the Web, powered by the WebAssembly NWScript compiler.</p>
             <div class="kv">
               <div>Extension version</div><div>${escapeHtml(options.extensionVersion)}</div>
               <div>Compiler backend</div><div>KobaltBlu/nwscript-wasm</div>

@@ -33,7 +33,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nwscript-vsix
+          name: nwscript-workbench-vsix
           path: "*.vsix"
 
       - name: Publish to Visual Studio Marketplace

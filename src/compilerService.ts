@@ -307,9 +307,9 @@ export class CompilerService implements vscode.Disposable {
       throw new Error(
         settings.autoDetectLanguageSpec
           ? "No nwscript.nss could be auto-detected in the active workspace folder. " +
-            "Add nwscript.nss to the project or run 'NWScript: Select Compiler Target' to choose one explicitly."
+            "Add nwscript.nss to the project or run 'NWScript Workbench: Select Compiler Target' to choose one explicitly."
           : "No nwscript.nss language specification is configured. " +
-            "Run 'NWScript: Select Compiler Target' and choose a NWScript.nss file or an embedded target.",
+            "Run 'NWScript Workbench: Select Compiler Target' and choose a NWScript.nss file or an embedded target.",
       );
     }
 
@@ -461,7 +461,7 @@ export class CompilerService implements vscode.Disposable {
 
     throw new Error(
       `Multiple nwscript.nss files were found and none is an unambiguous match: ${labels}${suffix}. ` +
-      "Run 'NWScript: Select Compiler Target' and choose the desired project language specification.",
+      "Run 'NWScript Workbench: Select Compiler Target' and choose the desired project language specification.",
     );
   }
 

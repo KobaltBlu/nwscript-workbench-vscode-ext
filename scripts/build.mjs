@@ -50,7 +50,7 @@ const options = {
 if (watch) {
   const context = await esbuild.context(options);
   await context.watch();
-  console.log("[watch] NWScript extension build active");
+  console.log("[watch] NWScript Workbench extension build active");
 } else {
   await esbuild.build(options);
 }
