@@ -12,7 +12,7 @@
   "Starting Conditional": {
     "prefix": "StartingConditional",
     "body": [
-      "int StartingCondition()",
+      "int StartingConditional()",
       "{",
       "  $0",
       "}"
