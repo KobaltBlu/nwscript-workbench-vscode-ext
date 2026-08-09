@@ -9,7 +9,7 @@ Initial public release.
 - Engine-aware IntelliSense from the active `nwscript.nss`
 - Signature help and rich hover documentation
 - Include-aware project symbol resolution
-- Go to Definition, Find References, Rename Symbol, Outline, and workspace symbols
+- Go to Definition, Find References, scope-aware Rename Symbol for functions, parameters, globals, and local variables, Outline, and workspace symbols
 - NWScript and NCS assembly syntax highlighting
 
 ### Compilation

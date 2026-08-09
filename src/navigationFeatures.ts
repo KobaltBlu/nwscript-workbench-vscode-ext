@@ -20,6 +20,10 @@ interface IdentifierTarget {
   name: string;
   range: vscode.Range;
   symbols: EngineSymbol[];
+  local?: {
+    definition: vscode.Range;
+    scope: vscode.Range;
+  };
 }
 
 interface IncludeTarget {
@@ -101,6 +105,10 @@ implements vscode.DefinitionProvider, vscode.DeclarationProvider {
       return undefined;
     }
 
+    if (target.local) {
+      return new vscode.Location(document.uri, target.local.definition);
+    }
+
     const locations = uniqueDefinitions(target.symbols).map(
       (symbol) => new vscode.Location(
         symbol.definition!.uri,
@@ -152,6 +160,14 @@ class NWScriptReferenceProvider implements vscode.ReferenceProvider {
     includeDeclaration: boolean,
     token: vscode.CancellationToken,
   ): Promise<vscode.Location[]> {
+    if (target.local) {
+      const declarationKey = rangeKey(target.local.definition);
+      return identifierRanges(sourceDocument, target.name)
+        .filter((range) => target.local!.scope.contains(range))
+        .filter((range) => includeDeclaration || rangeKey(range) !== declarationKey)
+        .map((range) => new vscode.Location(sourceDocument.uri, range));
+    }
+
     const definitionKeys = new Set(
       target.symbols
         .filter((symbol) => symbol.definition)
@@ -236,7 +252,7 @@ class NWScriptRenameProvider implements vscode.RenameProvider {
       return undefined;
     }
 
-    if (target.symbols.every((symbol) => symbol.sourceKind === "engine")) {
+    if (!target.local && target.symbols.every((symbol) => symbol.sourceKind === "engine")) {
       throw new Error(
         "Engine API symbols come from the active nwscript.nss and cannot be renamed from a script.",
       );
@@ -267,7 +283,7 @@ class NWScriptRenameProvider implements vscode.RenameProvider {
       return undefined;
     }
 
-    if (target.symbols.every((symbol) => symbol.sourceKind === "engine")) {
+    if (!target.local && target.symbols.every((symbol) => symbol.sourceKind === "engine")) {
       throw new Error(
         "Engine API symbols come from the active nwscript.nss and cannot be renamed from a script.",
       );
@@ -306,6 +322,18 @@ class NWScriptDocumentHighlightProvider implements vscode.DocumentHighlightProvi
     );
     if (!target || token.isCancellationRequested) {
       return undefined;
+    }
+
+    if (target.local) {
+      const declarationKey = rangeKey(target.local.definition);
+      return identifierRanges(document, target.name)
+        .filter((range) => target.local!.scope.contains(range))
+        .map((range) => new vscode.DocumentHighlight(
+          range,
+          rangeKey(range) === declarationKey
+            ? vscode.DocumentHighlightKind.Write
+            : vscode.DocumentHighlightKind.Read,
+        ));
     }
 
     const declarationRanges = new Set(
@@ -463,6 +491,11 @@ async function resolveIdentifierTarget(
   }
 
   const name = document.getText(range);
+  const local = resolveLocalIdentifier(document, position, name);
+  if (local) {
+    return { name, range, symbols: [], local };
+  }
+
   const model = await safelyGetModel(engineApi, document);
   if (!model) {
     return undefined;
@@ -475,6 +508,138 @@ async function resolveIdentifierTarget(
   }
 
   return { name, range, symbols };
+}
+
+function resolveLocalIdentifier(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  name: string,
+): IdentifierTarget["local"] | undefined {
+  const text = document.getText();
+  const masked = maskNonCode(text);
+  const offset = document.offsetAt(position);
+  const functionPattern = /\b[A-Za-z_]\w*\s+[A-Za-z_]\w*\s*\(([^;{}]*)\)\s*\{/g;
+
+  for (const match of masked.matchAll(functionPattern)) {
+    const headerStart = match.index;
+    const openBrace = headerStart + match[0].lastIndexOf("{");
+    const closeBrace = matchingBrace(masked, openBrace);
+    if (closeBrace < 0 || offset < headerStart || offset > closeBrace) {
+      continue;
+    }
+
+    const candidates: Array<{ offset: number; scopeStart: number; scopeEnd: number }> = [];
+    const parameterText = match[1];
+    const parameterStart = headerStart + match[0].indexOf(parameterText);
+    const parameterPattern = /(?:^|,)\s*(?:const\s+)?[A-Za-z_]\w*\s+([A-Za-z_]\w*)/g;
+    for (const parameter of parameterText.matchAll(parameterPattern)) {
+      if (parameter[1] !== name) continue;
+      const relativeName = parameter[0].lastIndexOf(name);
+      candidates.push({
+        offset: parameterStart + parameter.index + relativeName,
+        scopeStart: parameterStart + parameter.index + relativeName,
+        scopeEnd: closeBrace,
+      });
+    }
+
+    const body = masked.slice(openBrace + 1, closeBrace);
+    const declarationPattern = new RegExp(
+      `\\b(?:const\\s+)?[A-Za-z_]\\w*\\s+(${escapeRegExp(name)})\\b(?=\\s*(?:=|;|,))`,
+      "g",
+    );
+    for (const declaration of body.matchAll(declarationPattern)) {
+      const declarationOffset = openBrace + 1 + declaration.index + declaration[0].lastIndexOf(name);
+      const blockEnd = containingBlockEnd(masked, openBrace, declarationOffset);
+      if (declarationOffset <= offset + name.length && offset <= blockEnd) {
+        candidates.push({
+          offset: declarationOffset,
+          scopeStart: declarationOffset,
+          scopeEnd: blockEnd,
+        });
+      }
+    }
+
+    const declaration = candidates.sort((a, b) => b.offset - a.offset)[0];
+    if (!declaration) {
+      return undefined;
+    }
+
+    return {
+      definition: new vscode.Range(
+        document.positionAt(declaration.offset),
+        document.positionAt(declaration.offset + name.length),
+      ),
+      scope: new vscode.Range(
+        document.positionAt(declaration.scopeStart),
+        document.positionAt(declaration.scopeEnd),
+      ),
+    };
+  }
+
+  return undefined;
+}
+
+function maskNonCode(text: string): string {
+  const chars = text.split("");
+  let quote: string | undefined;
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let i = 0; i < chars.length; i += 1) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (lineComment) {
+      if (ch === "\n") lineComment = false;
+      else chars[i] = " ";
+    } else if (blockComment) {
+      chars[i] = " ";
+      if (ch === "*" && next === "/") {
+        chars[i + 1] = " ";
+        blockComment = false;
+        i += 1;
+      }
+    } else if (quote) {
+      chars[i] = " ";
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === quote) quote = undefined;
+    } else if (ch === "/" && next === "/") {
+      chars[i] = chars[i + 1] = " ";
+      lineComment = true;
+      i += 1;
+    } else if (ch === "/" && next === "*") {
+      chars[i] = chars[i + 1] = " ";
+      blockComment = true;
+      i += 1;
+    } else if (ch === '"' || ch === "'") {
+      chars[i] = " ";
+      quote = ch;
+    }
+  }
+  return chars.join("");
+}
+
+function matchingBrace(text: string, openBrace: number): number {
+  let depth = 0;
+  for (let i = openBrace; i < text.length; i += 1) {
+    if (text[i] === "{") depth += 1;
+    else if (text[i] === "}" && --depth === 0) return i;
+  }
+  return -1;
+}
+
+function containingBlockEnd(text: string, functionBrace: number, offset: number): number {
+  const stack: number[] = [];
+  for (let i = functionBrace; i <= offset; i += 1) {
+    if (text[i] === "{") stack.push(i);
+    else if (text[i] === "}") stack.pop();
+  }
+  return matchingBrace(text, stack.at(-1) ?? functionBrace);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function preferredSymbols(
