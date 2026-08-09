@@ -4,6 +4,8 @@ Complete NWScript development tools for **VS Code Desktop** and **VS Code for th
 
 The extension uses [`KobaltBlu/nwscript-wasm`](https://github.com/KobaltBlu/nwscript-wasm/tree/master), which packages the native NWScript compiler as WebAssembly. The compiler JavaScript is bundled into the extension and the `.wasm` binary is shipped inside the VSIX, so **no native compiler, Nim, Python, Emscripten, or network access is required at runtime**.
 
+![NWScript Workbench](assets/logo.png)
+
 ## NWScript Workbench Home
 
 Run **NWScript Workbench: Open Home** to open the extension control center in an editor tab.
