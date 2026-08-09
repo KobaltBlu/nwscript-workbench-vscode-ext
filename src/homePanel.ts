@@ -131,6 +131,12 @@ export class NWScriptHomePanel implements vscode.Disposable {
           );
           break;
 
+        case "openScriptBrowser":
+          await vscode.commands.executeCommand(
+            "nwscript.openScriptBrowser",
+          );
+          break;
+
         case "refresh":
           await this.refresh(currentScope() ?? this.scope);
           return;
@@ -466,6 +472,12 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
               <li><strong>Ambiguous</strong>If multiple unrelated specs remain, the extension refuses to guess and asks you to choose one explicitly.</li>
             </ol>
             <div class="callout"><strong>Important:</strong> a workspace-root <code>nwscript.nss</code> is a workspace-wide authority. If you want separate K1, K2, or custom script trees to resolve independently, do not place a competing <code>nwscript.nss</code> at the common workspace root.</div>
+          </article>
+
+          <article class="card full">
+            <h2>Script Browser</h2>
+            <p class="muted">Search and preview decompiled KOTOR and TSL scripts from the KOTOR Community Patches repository, then download only the scripts you choose.</p>
+            <div class="actions"><button class="button" data-action="openScriptBrowser">Browse Scripts</button></div>
           </article>
 
           <article class="card full">

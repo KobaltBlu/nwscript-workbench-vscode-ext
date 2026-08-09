@@ -6,6 +6,7 @@ Initial public release.
 
 ### NWScript editing
 
+- On-demand Script Browser for searching, previewing, opening, and downloading source from the KOTOR Community Patches catalog
 - Engine-aware IntelliSense from the active `nwscript.nss`
 - Signature help and rich hover documentation
 - Include-aware project symbol resolution

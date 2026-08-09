@@ -41,6 +41,7 @@
   },
   "activationEvents": [
     "onCommand:nwscript.openHome",
+    "onCommand:nwscript.openScriptBrowser",
     "onStartupFinished",
     "onLanguage:nwscript",
     "onCommand:nwscript.compileCurrentFile",
@@ -98,6 +99,11 @@
         "command": "nwscript.openHome",
         "title": "NWScript Workbench: Open Home",
         "icon": "$(home)"
+      },
+      {
+        "command": "nwscript.openScriptBrowser",
+        "title": "NWScript Workbench: Browse Scripts",
+        "icon": "$(library)"
       },
       {
         "command": "nwscript.compileCurrentFile",

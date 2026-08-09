@@ -9,6 +9,7 @@ import { NWScriptHomePanel } from "./homePanel";
 import { basename, toWorkspacePathOrUri } from "./uri";
 import { EngineApiService } from "./engineApi";
 import { registerLanguageFeatures } from "./languageFeatures";
+import { ScriptBrowser } from "./scriptBrowser";
 
 interface CompilerTargetItem extends vscode.QuickPickItem {
   kindValue: "byo" | "detected" | "embedded";
@@ -23,6 +24,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const engineApi = new EngineApiService(compiler);
   const statusBar = new NWScriptStatusBar();
   const ncsEditor = new NcsEditorProvider(compiler);
+  const scriptBrowser = new ScriptBrowser();
   let home: NWScriptHomePanel;
 
   const refreshCompiler = (): void => {
@@ -43,6 +45,7 @@ export function activate(context: vscode.ExtensionContext): void {
     engineApi,
     statusBar,
     ncsEditor,
+    scriptBrowser,
     home,
   );
 
@@ -158,6 +161,17 @@ export function activate(context: vscode.ExtensionContext): void {
       async () => {
         try {
           await home.open(vscode.window.activeTextEditor?.document.uri);
+        } catch (error) {
+          showError(error);
+        }
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "nwscript.openScriptBrowser",
+      async () => {
+        try {
+          await scriptBrowser.open();
         } catch (error) {
           showError(error);
         }

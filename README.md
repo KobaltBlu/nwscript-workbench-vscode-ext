@@ -23,6 +23,14 @@ NWScript Workbench Home provides:
 
 The Home tab opens automatically once on first run and remains available from the Command Palette afterward.
 
+## Script Browser
+
+Run **NWScript Workbench: Browse Scripts** to search the decompiled KOTOR and TSL source catalog maintained by [KOTOR Community Patches](https://github.com/KOTORCommunityPatches/Vanilla_KOTOR_Script_Source).
+
+The browser fetches the repository catalog from GitHub. Search operates locally over script names and repository paths; selecting a result fetches only that script for preview. You can open a source copy in an untitled NWScript editor or download it through VS Code's URI-aware save dialog into a desktop, browser, or virtual workspace.
+
+No upstream script source is packaged with NWScript Workbench. An internet connection is required, and downloaded sources remain subject to the upstream repository and game-content terms.
+
 ### Language specification resolution
 
 The extension resolves the `nwscript.nss` used by a script in this order:
