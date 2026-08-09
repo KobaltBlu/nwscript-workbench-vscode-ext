@@ -1,0 +1,261 @@
+{
+  "name": "nwscript-compiler",
+  "displayName": "NWScript Compiler",
+  "description": "Standalone NWScript compilation for VS Code and VS Code for the Web using WebAssembly.",
+  "version": "0.1.0",
+  "publisher": "KobaltBlu",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KobaltBlu/nwscript-vscode.git"
+  },
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "nwscript",
+    "nss",
+    "ncs",
+    "kotor",
+    "kotor2",
+    "wasm"
+  ],
+  "browser": "./dist/web/extension.js",
+  "capabilities": {
+    "virtualWorkspaces": {
+      "supported": true,
+      "description": "Compilation uses the VS Code virtual file system API and works with browser-hosted workspaces."
+    },
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "activationEvents": [
+    "onCommand:nwscript.openHome",
+    "onStartupFinished",
+    "onLanguage:nwscript",
+    "onCommand:nwscript.compileCurrentFile",
+    "onCommand:nwscript.selectGameTarget",
+    "onCommand:nwscript.showEmbeddedTargets",
+    "onCommand:nwscript.disassembleNcs",
+    "onCommand:nwscript.selectCompilerTarget",
+    "onCommand:nwscript.selectLanguageSpec",
+    "onCustomEditor:nwscript.ncsHex"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "nwscript",
+        "aliases": [
+          "NWScript",
+          "nwscript"
+        ],
+        "extensions": [
+          ".nss"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "nwscript-asm",
+        "aliases": [
+          "NWScript Assembly",
+          "NCS Assembly"
+        ],
+        "extensions": [
+          ".ncsasm"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "nwscript",
+        "scopeName": "source.nwscript",
+        "path": "./syntaxes/nwscript.tmLanguage.json"
+      },
+      {
+        "language": "nwscript-asm",
+        "scopeName": "source.nwscript-asm",
+        "path": "./syntaxes/nwscript-asm.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "nwscript",
+        "path": "./snippets/nwscript.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "nwscript.openHome",
+        "title": "NWScript: Open Home",
+        "icon": "$(home)"
+      },
+      {
+        "command": "nwscript.compileCurrentFile",
+        "title": "NWScript: Compile Current File",
+        "icon": "$(play)"
+      },
+      {
+        "command": "nwscript.selectCompilerTarget",
+        "title": "NWScript: Select Compiler Target"
+      },
+      {
+        "command": "nwscript.selectLanguageSpec",
+        "title": "NWScript: Select nwscript.nss"
+      },
+      {
+        "command": "nwscript.showEmbeddedTargets",
+        "title": "NWScript: Show Embedded Game Targets"
+      },
+      {
+        "command": "nwscript.disassembleNcs",
+        "title": "NWScript: Disassemble NCS"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "nwscript.compileCurrentFile",
+          "when": "resourceExtname == .nss",
+          "group": "navigation"
+        },
+        {
+          "command": "nwscript.openHome",
+          "when": "resourceExtname == .nss",
+          "group": "navigation@99"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "nwscript.compileCurrentFile",
+          "when": "resourceExtname == .nss",
+          "group": "navigation@10"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "nwscript.compileCurrentFile",
+          "when": "resourceExtname == .nss",
+          "group": "navigation@10"
+        },
+        {
+          "command": "nwscript.disassembleNcs",
+          "when": "resourceExtname == .ncs",
+          "group": "navigation@11"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "NWScript Compiler",
+      "properties": {
+        "nwscript.gameTarget": {
+          "type": "string",
+          "default": "",
+          "description": "Optional embedded nwscript.nss target. Leave empty to use NWScript.nss via nwscript.languageSpec.",
+          "scope": "resource"
+        },
+        "nwscript.languageSpec": {
+          "type": "string",
+          "default": "",
+          "description": "NWScript.nss workspace-relative path or URI to an nwscript.nss language specification. When set, it overrides any embedded game target.",
+          "scope": "resource"
+        },
+        "nwscript.autoDetectLanguageSpec": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "Automatically discover nwscript.nss in the active workspace folder when no explicit NWScript.nss file or embedded game target is configured."
+        },
+        "nwscript.includePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Workspace-relative directories searched before the workspace-wide NSS index when resolving #include resources.",
+          "scope": "resource"
+        },
+        "nwscript.outputDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Workspace-relative directory for generated NCS/NDB files. Empty writes beside the source NSS file.",
+          "scope": "resource"
+        },
+        "nwscript.compileOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Compile NWScript files when they are saved.",
+          "scope": "resource"
+        },
+        "nwscript.optimizationLevel": {
+          "type": "string",
+          "enum": [
+            "O0",
+            "O1",
+            "O2",
+            "O3"
+          ],
+          "default": "O1",
+          "description": "Compiler optimization level.",
+          "scope": "resource"
+        },
+        "nwscript.generateDebug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Generate NDB debug data when supported by the compiler.",
+          "scope": "resource"
+        },
+        "nwscript.maxIncludeDepth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128,
+          "default": 32,
+          "description": "Maximum include depth accepted by the native compiler.",
+          "scope": "resource"
+        },
+        "nwscript.maxResolveAttempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256,
+          "default": 64,
+          "description": "Maximum number of missing include resources the extension will resolve and retry during one compilation.",
+          "scope": "resource"
+        }
+      }
+    },
+    "customEditors": [
+      {
+        "viewType": "nwscript.ncsHex",
+        "displayName": "NWScript NCS Hex",
+        "selector": [
+          {
+            "filenamePattern": "*.ncs"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "build": "npm run check-types && node ./scripts/build.mjs",
+    "watch": "node ./scripts/build.mjs --watch",
+    "package": "npm run build && vsce package",
+    "test-web": "npm run build && vscode-test-web --browserType=chromium --extensionDevelopmentPath=. .",
+    "vscode:prepublish": "npm run build"
+  },
+  "dependencies": {
+    "@neverwinter/nwscript-wasm": "https://codeload.github.com/KobaltBlu/nwscript-wasm/tar.gz/refs/heads/master"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.100.0",
+    "@vscode/test-web": "^0.0.81",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.0"
+  }
+}

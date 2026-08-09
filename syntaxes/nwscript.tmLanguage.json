@@ -1,0 +1,64 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "NWScript",
+  "scopeName": "source.nwscript",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#preprocessor" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#constants" },
+    { "include": "#functions" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.nwscript", "match": "//.*$" },
+        { "name": "comment.block.nwscript", "begin": "/\\*", "end": "\\*/" }
+      ]
+    },
+    "preprocessor": {
+      "patterns": [
+        { "name": "meta.preprocessor.include.nwscript", "match": "^\\s*#\\s*(include)\\s+(\"[^\"]+\")", "captures": { "1": { "name": "keyword.control.import.nwscript" }, "2": { "name": "string.quoted.double.include.nwscript" } } },
+        { "name": "meta.preprocessor.nwscript", "match": "^\\s*#\\s*(define|ifdef|ifndef|if|elif|else|endif|undef|pragma)\\b", "captures": { "1": { "name": "keyword.control.directive.nwscript" } } }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        { "name": "string.quoted.double.nwscript", "begin": "\"", "end": "\"", "patterns": [{ "name": "constant.character.escape.nwscript", "match": "\\\\." }] }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        { "name": "constant.numeric.hex.nwscript", "match": "\\b0[xX][0-9A-Fa-f]+\\b" },
+        { "name": "constant.numeric.float.nwscript", "match": "\\b(?:\\d+\\.\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?[fF]?\\b" },
+        { "name": "constant.numeric.integer.nwscript", "match": "\\b\\d+\\b" }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        { "name": "keyword.control.nwscript", "match": "\\b(if|else|while|for|do|switch|case|default|break|continue|return)\\b" },
+        { "name": "storage.modifier.nwscript", "match": "\\b(const)\\b" }
+      ]
+    },
+    "types": {
+      "patterns": [
+        { "name": "storage.type.nwscript", "match": "\\b(void|int|float|string|object|vector|location|effect|event|talent|itemproperty|action|json|sqlquery|cassowary)\\b" },
+        { "name": "entity.name.type.struct.nwscript", "match": "\\bstruct\\s+([A-Za-z_][A-Za-z0-9_]*)", "captures": { "1": { "name": "entity.name.type.nwscript" } } }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        { "name": "constant.language.nwscript", "match": "\\b(TRUE|FALSE|OBJECT_INVALID)\\b" },
+        { "name": "constant.other.nwscript", "match": "\\b[A-Z][A-Z0-9_]{2,}\\b" }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        { "name": "entity.name.function.nwscript", "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()" }
+      ]
+    }
+  }
+}

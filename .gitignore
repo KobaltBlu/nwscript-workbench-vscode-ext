@@ -1,0 +1,8 @@
+node_modules/
+dist/
+nss/
+*.vsix
+.vscode-test-web/
+.DS_Store
+nwscript.nss
+*.patch

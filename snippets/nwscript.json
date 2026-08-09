@@ -1,0 +1,27 @@
+{
+  "Main function": {
+    "prefix": "main",
+    "body": [
+      "void main()",
+      "{",
+      "  $0",
+      "}"
+    ],
+    "description": "NWScript main entry point"
+  },
+  "Starting Conditional": {
+    "prefix": "StartingConditional",
+    "body": [
+      "int StartingCondition()",
+      "{",
+      "  $0",
+      "}"
+    ],
+    "description": "Starting conditional"
+  },
+  "Include": {
+    "prefix": "include",
+    "body": "#include \"${1:k_inc_}\"",
+    "description": "Include an NSS resource"
+  }
+}

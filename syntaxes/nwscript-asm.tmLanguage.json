@@ -1,0 +1,11 @@
+{
+  "name": "NWScript Assembly",
+  "scopeName": "source.nwscript-asm",
+  "patterns": [
+    { "name": "constant.numeric.hex.nwscript-asm", "match": "^\\s*[0-9A-Fa-f]{8}\\b" },
+    { "name": "keyword.control.nwscript-asm", "match": "\\b(JMP|JSR|JZ|JNZ|RETN|ACTION|STORE_STATE|SAVEBP|RESTOREBP)\\b" },
+    { "name": "string.quoted.double.nwscript-asm", "begin": "\"", "end": "\"" },
+    { "name": "entity.name.function.nwscript-asm", "match": "\\b(?:fn|off)_[0-9A-Fa-f]{8}\\b" },
+    { "name": "support.function.nwscript-asm", "match": "(?<=ACTION\\s)[A-Za-z_][A-Za-z0-9_]*(?=\\()" }
+  ]
+}
