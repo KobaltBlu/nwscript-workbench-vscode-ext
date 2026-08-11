@@ -6,16 +6,10 @@ import { ResourceResolver } from "./resourceResolver";
 import { NWScriptStatusBar } from "./statusBar";
 import { NcsEditorProvider } from "./ncsEditor";
 import { NWScriptHomePanel } from "./homePanel";
-import { basename, toWorkspacePathOrUri } from "./uri";
 import { EngineApiService } from "./engineApi";
 import { registerLanguageFeatures } from "./languageFeatures";
 import { ScriptBrowser } from "./scriptBrowser";
-
-interface CompilerTargetItem extends vscode.QuickPickItem {
-  kindValue: "byo" | "detected" | "embedded";
-  target?: string;
-  uri?: vscode.Uri;
-}
+import { LanguageDefinitionBrowser } from "./languageDefinitionBrowser";
 
 export function activate(context: vscode.ExtensionContext): void {
   const resolver = new ResourceResolver();
@@ -38,6 +32,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   home = new NWScriptHomePanel(context, compiler, refreshCompiler);
 
+  const languageDefinitionBrowser = new LanguageDefinitionBrowser();
+
   context.subscriptions.push(
     resolver,
     diagnostics,
@@ -46,114 +42,11 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBar,
     ncsEditor,
     scriptBrowser,
+    languageDefinitionBrowser,
     home,
   );
 
   registerLanguageFeatures(context, engineApi, resolver);
-
-  const selectLanguageSpec = async (scope?: vscode.Uri): Promise<boolean> => {
-    const selected = await vscode.window.showOpenDialog({
-      canSelectMany: false,
-      filters: { "NWScript language specification": ["nss"] },
-      title: "Select nwscript.nss",
-      openLabel: "Use as NWScript Language Specification",
-    });
-
-    const uri = selected?.[0];
-    if (!uri) {
-      return false;
-    }
-
-    const config = vscode.workspace.getConfiguration("nwscript", scope);
-    const target = configurationTarget(scope);
-
-    await config.update(
-      "languageSpec",
-      toWorkspacePathOrUri(uri, scope),
-      target,
-    );
-    await config.update("gameTarget", "", target);
-
-    refreshCompiler();
-    void vscode.window.showInformationMessage(
-      `NWScript Workbench: using ${basename(uri)} as the language specification.`,
-    );
-    return true;
-  };
-
-  const selectCompilerTarget = async (scope?: vscode.Uri): Promise<void> => {
-    const settings = getSettings(scope);
-    const [targets, detectedSpecs] = await Promise.all([
-      compiler.getEmbeddedTargets(),
-      compiler.findProjectLanguageSpecs(scope),
-    ]);
-
-    const items: CompilerTargetItem[] = [
-      ...detectedSpecs.map((uri) => ({
-        label: `$(search) Auto-detected: ${basename(uri)}`,
-        description: toWorkspacePathOrUri(uri, scope),
-        detail:
-          "Project nwscript.nss discovered automatically. Selecting it pins this specification in folder settings.",
-        kindValue: "detected" as const,
-        uri,
-      })),
-      {
-        label: "$(file-code) NWScript.nss: Choose nwscript.nss...",
-        description: settings.languageSpec
-          ? `Current: ${settings.languageSpec}`
-          : "Choose a language specification manually",
-        detail: "Works with desktop VS Code, vscode.dev, and virtual workspaces.",
-        kindValue: "byo",
-      },
-      ...targets.map((target) => ({
-        label: `$(package) ${target}`,
-        description:
-          !settings.languageSpec && target === settings.gameTarget
-            ? "Current embedded target"
-            : "Embedded target",
-        kindValue: "embedded" as const,
-        target,
-      })),
-    ];
-
-    const selected = await vscode.window.showQuickPick(items, {
-      title: "NWScript Workbench: Select Compiler Target",
-      placeHolder:
-        detectedSpecs.length > 0
-          ? "Choose a detected project spec, NWScript.nss, or an embedded target"
-          : targets.length > 0
-            ? "Choose NWScript.nss or an embedded language specification"
-            : "No project spec was detected; choose your nwscript.nss",
-    });
-
-    if (!selected) {
-      return;
-    }
-
-    if (selected.kindValue === "byo") {
-      await selectLanguageSpec(scope);
-      return;
-    }
-
-    if (selected.kindValue === "detected" && selected.uri) {
-      const config = vscode.workspace.getConfiguration("nwscript", scope);
-      const target = configurationTarget(scope);
-      await config.update(
-        "languageSpec",
-        toWorkspacePathOrUri(selected.uri, scope),
-        target,
-      );
-      await config.update("gameTarget", "", target);
-      refreshCompiler();
-      return;
-    }
-
-    const config = vscode.workspace.getConfiguration("nwscript", scope);
-    const target = configurationTarget(scope);
-    await config.update("gameTarget", selected.target ?? "", target);
-    await config.update("languageSpec", "", target);
-    refreshCompiler();
-  };
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -179,6 +72,17 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
 
     vscode.commands.registerCommand(
+      "nwscript.openLanguageDefinitionBrowser",
+      async () => {
+        try {
+          await languageDefinitionBrowser.open();
+        } catch (error) {
+          showError(error);
+        }
+      },
+    ),
+
+    vscode.commands.registerCommand(
       "nwscript.compileCurrentFile",
       async (resource?: vscode.Uri) => {
         try {
@@ -196,62 +100,6 @@ export function activate(context: vscode.ExtensionContext): void {
             return;
           }
           await compiler.compileUri(uri);
-        } catch (error) {
-          showError(error);
-        }
-      },
-    ),
-
-    vscode.commands.registerCommand(
-      "nwscript.selectCompilerTarget",
-      async (resource?: vscode.Uri) => {
-        try {
-          await selectCompilerTarget(
-            resource ?? vscode.window.activeTextEditor?.document.uri,
-          );
-        } catch (error) {
-          showError(error);
-        }
-      },
-    ),
-
-    vscode.commands.registerCommand(
-      "nwscript.selectLanguageSpec",
-      async (resource?: vscode.Uri) => {
-        try {
-          await selectLanguageSpec(
-            resource ?? vscode.window.activeTextEditor?.document.uri,
-          );
-        } catch (error) {
-          showError(error);
-        }
-      },
-    ),
-
-    // Backwards-compatible alias from the initial extension prototype.
-    vscode.commands.registerCommand(
-      "nwscript.selectGameTarget",
-      async (resource?: vscode.Uri) => {
-        try {
-          await selectCompilerTarget(
-            resource ?? vscode.window.activeTextEditor?.document.uri,
-          );
-        } catch (error) {
-          showError(error);
-        }
-      },
-    ),
-
-    vscode.commands.registerCommand(
-      "nwscript.showEmbeddedTargets",
-      async () => {
-        try {
-          const targets = await compiler.getEmbeddedTargets();
-          void vscode.window.showInformationMessage(
-            targets.length > 0
-              ? `Embedded NWScript targets: ${targets.join(", ")}`
-              : "No embedded NWScript targets are present in this build. NWScript.nss is available.",
-          );
         } catch (error) {
           showError(error);
         }
@@ -322,12 +170,6 @@ async function showHomeOnFirstRun(
 
 export function deactivate(): void {
   // VS Code disposes ExtensionContext subscriptions automatically.
-}
-
-function configurationTarget(scope?: vscode.Uri): vscode.ConfigurationTarget {
-  return scope && vscode.workspace.getWorkspaceFolder(scope)
-    ? vscode.ConfigurationTarget.WorkspaceFolder
-    : vscode.ConfigurationTarget.Workspace;
 }
 
 function showError(error: unknown): void {

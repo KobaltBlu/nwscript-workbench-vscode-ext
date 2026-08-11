@@ -4,9 +4,6 @@ import { OptimizationFlags } from "@neverwinter/nwscript-wasm";
 export type OptimizationLevel = "O0" | "O1" | "O2" | "O3";
 
 export interface NWScriptSettings {
-  gameTarget: string;
-  languageSpec: string;
-  autoDetectLanguageSpec: boolean;
   includePaths: string[];
   outputDirectory: string;
   compileOnSave: boolean;
@@ -22,9 +19,6 @@ export function getSettings(scope?: vscode.Uri): NWScriptSettings {
   const optimizationLevel = config.get<OptimizationLevel>("optimizationLevel", "O1");
 
   return {
-    gameTarget: config.get<string>("gameTarget", "").trim(),
-    languageSpec: config.get<string>("languageSpec", "").trim(),
-    autoDetectLanguageSpec: config.get<boolean>("autoDetectLanguageSpec", true),
     includePaths: config.get<string[]>("includePaths", []),
     outputDirectory: config.get<string>("outputDirectory", "").trim(),
     compileOnSave: config.get<boolean>("compileOnSave", false),
@@ -38,9 +32,6 @@ export function getSettings(scope?: vscode.Uri): NWScriptSettings {
 
 export function compilerSettingsKey(settings: NWScriptSettings): string {
   return JSON.stringify({
-    gameTarget: settings.gameTarget,
-    languageSpec: settings.languageSpec,
-    autoDetectLanguageSpec: settings.autoDetectLanguageSpec,
     optimizationFlags: settings.optimizationFlags,
     generateDebug: settings.generateDebug,
     maxIncludeDepth: settings.maxIncludeDepth,

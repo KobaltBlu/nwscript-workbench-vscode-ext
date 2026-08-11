@@ -2,7 +2,7 @@
   "name": "nwscript-workbench",
   "displayName": "NWScript Workbench",
   "description": "A complete NWScript workbench for VS Code and compatible editors, with WebAssembly compilation, IntelliSense, navigation, and NCS inspection.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "KobaltBlu",
   "license": "GPL-3.0-only",
   "repository": {
@@ -42,14 +42,11 @@
   "activationEvents": [
     "onCommand:nwscript.openHome",
     "onCommand:nwscript.openScriptBrowser",
+    "onCommand:nwscript.openLanguageDefinitionBrowser",
     "onStartupFinished",
     "onLanguage:nwscript",
     "onCommand:nwscript.compileCurrentFile",
-    "onCommand:nwscript.selectGameTarget",
-    "onCommand:nwscript.showEmbeddedTargets",
     "onCommand:nwscript.disassembleNcs",
-    "onCommand:nwscript.selectCompilerTarget",
-    "onCommand:nwscript.selectLanguageSpec",
     "onCustomEditor:nwscript.ncsHex"
   ],
   "contributes": {
@@ -106,21 +103,14 @@
         "icon": "$(library)"
       },
       {
+        "command": "nwscript.openLanguageDefinitionBrowser",
+        "title": "NWScript Workbench: Browse Language Definitions",
+        "icon": "$(references)"
+      },
+      {
         "command": "nwscript.compileCurrentFile",
         "title": "NWScript Workbench: Compile Current File",
         "icon": "$(play)"
-      },
-      {
-        "command": "nwscript.selectCompilerTarget",
-        "title": "NWScript Workbench: Select Compiler Target"
-      },
-      {
-        "command": "nwscript.selectLanguageSpec",
-        "title": "NWScript Workbench: Select nwscript.nss"
-      },
-      {
-        "command": "nwscript.showEmbeddedTargets",
-        "title": "NWScript Workbench: Show Embedded Game Targets"
       },
       {
         "command": "nwscript.disassembleNcs",
@@ -163,24 +153,6 @@
     "configuration": {
       "title": "NWScript Workbench",
       "properties": {
-        "nwscript.gameTarget": {
-          "type": "string",
-          "default": "",
-          "description": "Optional embedded nwscript.nss target. Leave empty to use NWScript.nss via nwscript.languageSpec.",
-          "scope": "resource"
-        },
-        "nwscript.languageSpec": {
-          "type": "string",
-          "default": "",
-          "description": "NWScript.nss workspace-relative path or URI to an nwscript.nss language specification. When set, it overrides any embedded game target.",
-          "scope": "resource"
-        },
-        "nwscript.autoDetectLanguageSpec": {
-          "type": "boolean",
-          "scope": "resource",
-          "default": true,
-          "description": "Automatically discover nwscript.nss in the active workspace folder when no explicit NWScript.nss file or embedded game target is configured."
-        },
         "nwscript.includePaths": {
           "type": "array",
           "items": {

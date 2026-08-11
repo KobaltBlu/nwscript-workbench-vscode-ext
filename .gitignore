@@ -1,6 +1,7 @@
 node_modules/
 dist/
 nss/
+games/
 *.vsix
 .vscode-test-web/
 .DS_Store

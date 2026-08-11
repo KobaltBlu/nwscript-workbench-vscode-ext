@@ -72,50 +72,6 @@ export class CompilerService implements vscode.Disposable {
   }
 
   async getLanguageSpecStatus(scope?: vscode.Uri): Promise<LanguageSpecStatus> {
-    const settings = getSettings(scope);
-
-    if (settings.languageSpec) {
-      const uri = resolveWorkspaceUri(settings.languageSpec, scope);
-      return uri
-        ? {
-            kind: "configured",
-            label: "NWScript.nss language specification configured",
-            detail: uri.toString(true),
-            uri,
-          }
-        : {
-            kind: "missing",
-            label: "NWScript.nss language specification path cannot be resolved",
-            detail: settings.languageSpec,
-          };
-    }
-
-    if (settings.gameTarget) {
-      const targets = await this.getEmbeddedTargets();
-      return targets.includes(settings.gameTarget)
-        ? {
-            kind: "embedded",
-            label: `Embedded target: ${settings.gameTarget}`,
-            detail: "The language specification is embedded in the packaged WASM compiler.",
-          }
-        : {
-            kind: "missing",
-            label: `Embedded target unavailable: ${settings.gameTarget}`,
-            detail:
-              targets.length > 0
-                ? `Available embedded targets: ${targets.join(", ")}`
-                : "This compiler build contains no embedded nwscript.nss targets.",
-          };
-    }
-
-    if (!settings.autoDetectLanguageSpec) {
-      return {
-        kind: "missing",
-        label: "No language specification selected",
-        detail: "Auto-detection is disabled. Choose a NWScript.nss file or embedded target.",
-      };
-    }
-
     try {
       const detected = await this.detectProjectLanguageSpec(scope);
       return detected
@@ -147,39 +103,6 @@ export class CompilerService implements vscode.Disposable {
    * embedded target names, but not their decompressed nwscript.nss text.
    */
   async getLanguageSpecSource(scope?: vscode.Uri): Promise<LanguageSpecSource | undefined> {
-    const settings = getSettings(scope);
-
-    if (settings.languageSpec) {
-      const uri = resolveWorkspaceUri(settings.languageSpec, scope);
-      if (!uri) {
-        return undefined;
-      }
-      return this.readLanguageSpecSource(
-        uri,
-        "configured",
-        `NWScript.nss: ${this.displayPath(uri, scope ?? uri)}`,
-        `Active NWScript.nss specification · ${this.displayPath(uri, scope ?? uri)}`,
-      );
-    }
-
-    if (settings.gameTarget) {
-      const targets = await this.getEmbeddedTargets();
-      if (!targets.includes(settings.gameTarget)) {
-        return undefined;
-      }
-      return {
-        kind: "embedded",
-        label: `Embedded target: ${settings.gameTarget}`,
-        availability: `Embedded game target: ${settings.gameTarget}`,
-        cacheKey: `embedded:${settings.gameTarget}`,
-        gameTarget: settings.gameTarget,
-      };
-    }
-
-    if (!settings.autoDetectLanguageSpec) {
-      return undefined;
-    }
-
     const uri = await this.detectProjectLanguageSpec(scope);
     if (!uri) {
       return undefined;
@@ -273,45 +196,13 @@ export class CompilerService implements vscode.Disposable {
     const settings = getSettings(scope);
     const moduleOptions = await this.getModuleOptions();
 
-    let languageSpecUri: vscode.Uri | undefined;
-    let languageSpecKey = "";
-    let useEmbeddedTarget = false;
-
-    if (settings.languageSpec) {
-      languageSpecUri = resolveWorkspaceUri(settings.languageSpec, scope);
-      if (!languageSpecUri) {
-        throw new Error(
-          `Unable to resolve nwscript.languageSpec ${JSON.stringify(settings.languageSpec)}. Open a workspace or use an explicit URI.`,
-        );
-      }
-      languageSpecKey = await this.languageSpecCacheKey(languageSpecUri, "configured");
-    } else if (settings.gameTarget) {
-      const embeddedTargets = await this.getEmbeddedTargets();
-      if (!embeddedTargets.includes(settings.gameTarget)) {
-        throw new Error(
-          `Embedded target ${JSON.stringify(settings.gameTarget)} is not available in this compiler build. ` +
-          "Choose a NWScript.nss file, enable automatic project detection, or select another embedded target.",
-        );
-      }
-      useEmbeddedTarget = true;
-      languageSpecKey = `embedded:${settings.gameTarget}`;
-    } else if (settings.autoDetectLanguageSpec) {
-      const detected = await this.detectProjectLanguageSpec(scope);
-      if (detected) {
-        languageSpecUri = detected;
-        languageSpecKey = await this.languageSpecCacheKey(detected, "detected");
-      }
-    }
-
-    if (!languageSpecUri && !useEmbeddedTarget) {
+    const languageSpecUri = await this.detectProjectLanguageSpec(scope);
+    if (!languageSpecUri) {
       throw new Error(
-        settings.autoDetectLanguageSpec
-          ? "No nwscript.nss could be auto-detected in the active workspace folder. " +
-            "Add nwscript.nss to the project or run 'NWScript Workbench: Select Compiler Target' to choose one explicitly."
-          : "No nwscript.nss language specification is configured. " +
-            "Run 'NWScript Workbench: Select Compiler Target' and choose a NWScript.nss file or an embedded target.",
+        "No nwscript.nss could be resolved for the active script. Add nwscript.nss to the script's project tree.",
       );
     }
+    const languageSpecKey = await this.languageSpecCacheKey(languageSpecUri, "detected");
 
     const key = `${compilerSettingsKey(settings)}|${languageSpecKey}`;
     if (this.compiler && this.compilerKey === key) {
@@ -334,9 +225,7 @@ export class CompilerService implements vscode.Disposable {
     }
 
     this.compiler = await NWScriptCompiler.create({
-      ...(languageSpec
-        ? { languageSpec }
-        : { gameTarget: settings.gameTarget }),
+      languageSpec,
       writeDebug: settings.generateDebug,
       maxIncludeDepth: settings.maxIncludeDepth,
       optimizationFlags: settings.optimizationFlags,
@@ -461,7 +350,7 @@ export class CompilerService implements vscode.Disposable {
 
     throw new Error(
       `Multiple nwscript.nss files were found and none is an unambiguous match: ${labels}${suffix}. ` +
-      "Run 'NWScript Workbench: Select Compiler Target' and choose the desired project language specification.",
+      "Move the script beneath the appropriate game folder or remove the conflicting definition from the Home resolution preview.",
     );
   }
 

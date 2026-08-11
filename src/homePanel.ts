@@ -1,13 +1,14 @@
 import * as vscode from "vscode";
 import { CompilerService, type LanguageSpecStatus } from "./compilerService";
 import { getSettings, type OptimizationLevel } from "./config";
-import { workspaceFolderFor } from "./uri";
+import { toWorkspacePathOrUri, workspaceFolderFor } from "./uri";
 
 const HOME_VIEW_TYPE = "nwscript.home";
 
 interface HomeMessage {
   type: string;
   key?: string;
+  uri?: string;
   value?: unknown;
 }
 
@@ -77,10 +78,13 @@ export class NWScriptHomePanel implements vscode.Disposable {
     const serial = ++this.renderSerial;
     const settings = getSettings(this.scope);
 
-    const [specStatus, embeddedTargets] = await Promise.all([
-      this.compiler.getLanguageSpecStatus(this.scope),
-      this.compiler.getEmbeddedTargets().catch(() => [] as string[]),
-    ]);
+    const specStatus = await this.compiler.getLanguageSpecStatus(this.scope);
+
+    const resolutionPreview = await buildResolutionPreview(
+      this.compiler,
+      this.scope,
+      specStatus,
+    );
 
     if (!this.panel || serial !== this.renderSerial) {
       return;
@@ -93,10 +97,7 @@ export class NWScriptHomePanel implements vscode.Disposable {
       extensionVersion: String(this.context.extension.packageJSON.version ?? ""),
       workspaceName: folder?.name ?? "No workspace folder",
       specStatus,
-      embeddedTargets,
-      languageSpec: settings.languageSpec,
-      gameTarget: settings.gameTarget,
-      autoDetectLanguageSpec: settings.autoDetectLanguageSpec,
+      resolutionPreview,
       compileOnSave: settings.compileOnSave,
       optimizationLevel: settings.optimizationLevel,
       generateDebug: settings.generateDebug,
@@ -110,20 +111,6 @@ export class NWScriptHomePanel implements vscode.Disposable {
   private async handleMessage(message: HomeMessage): Promise<void> {
     try {
       switch (message.type) {
-        case "selectTarget":
-          await vscode.commands.executeCommand(
-            "nwscript.selectCompilerTarget",
-            this.scope,
-          );
-          break;
-
-        case "selectLanguageSpec":
-          await vscode.commands.executeCommand(
-            "nwscript.selectLanguageSpec",
-            this.scope,
-          );
-          break;
-
         case "openSettings":
           await vscode.commands.executeCommand(
             "workbench.action.openSettings",
@@ -137,9 +124,19 @@ export class NWScriptHomePanel implements vscode.Disposable {
           );
           break;
 
+        case "openLanguageDefinitionBrowser":
+          await vscode.commands.executeCommand(
+            "nwscript.openLanguageDefinitionBrowser",
+          );
+          break;
+
         case "refresh":
           await this.refresh(currentScope() ?? this.scope);
           return;
+
+        case "removeLanguageSpec":
+          await this.removeLanguageSpec(message.uri);
+          break;
 
         case "openCompilerRepository":
           await vscode.env.openExternal(
@@ -177,7 +174,6 @@ export class NWScriptHomePanel implements vscode.Disposable {
     const target = configurationTarget(scope);
 
     switch (key) {
-      case "autoDetectLanguageSpec":
       case "compileOnSave":
       case "generateDebug":
         if (typeof value !== "boolean") {
@@ -196,10 +192,43 @@ export class NWScriptHomePanel implements vscode.Disposable {
 
     this.onConfigurationChanged();
   }
+
+  private async removeLanguageSpec(value: string | undefined): Promise<void> {
+    if (!value) throw new Error("No language specification was selected for removal.");
+    const requested = vscode.Uri.parse(value, true);
+    const candidates = await this.compiler.findProjectLanguageSpecs(this.scope);
+    const target = candidates.find((candidate) => candidate.toString() === requested.toString());
+    if (!target) {
+      throw new Error("The selected file is no longer a discovered workspace nwscript.nss.");
+    }
+
+    const displayPath = toWorkspacePathOrUri(target, this.scope ?? target);
+    const action = await vscode.window.showWarningMessage(
+      `Remove ${displayPath} to resolve the language-definition conflict?`,
+      { modal: true, detail: "The file will be moved to the operating system trash when supported." },
+      "Move to Trash",
+    );
+    if (action !== "Move to Trash") return;
+
+    try {
+      await vscode.workspace.fs.delete(target, { recursive: false, useTrash: true });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const permanent = await vscode.window.showWarningMessage(
+        `This workspace could not move ${displayPath} to the trash. Delete it permanently instead?`,
+        { modal: true, detail },
+        "Delete Permanently",
+      );
+      if (permanent !== "Delete Permanently") return;
+      await vscode.workspace.fs.delete(target, { recursive: false, useTrash: false });
+    }
+
+    this.onConfigurationChanged();
+    void vscode.window.showInformationMessage(`Removed ${displayPath}.`);
+  }
 }
 
 const EDITABLE_SETTINGS = new Set([
-  "autoDetectLanguageSpec",
   "compileOnSave",
   "generateDebug",
   "optimizationLevel",
@@ -227,10 +256,7 @@ interface HomeHtmlOptions {
   extensionVersion: string;
   workspaceName: string;
   specStatus: LanguageSpecStatus;
-  embeddedTargets: string[];
-  languageSpec: string;
-  gameTarget: string;
-  autoDetectLanguageSpec: boolean;
+  resolutionPreview: ResolutionPreview;
   compileOnSave: boolean;
   optimizationLevel: OptimizationLevel;
   generateDebug: boolean;
@@ -238,6 +264,83 @@ interface HomeHtmlOptions {
   outputDirectory: string;
   maxIncludeDepth: number;
   maxResolveAttempts: number;
+}
+
+interface ResolutionPreviewEntry {
+  uri: string;
+  path: string;
+  state: "active" | "shadowed" | "available";
+  detail: string;
+  removable: boolean;
+}
+
+interface ResolutionPreview {
+  severity: "ok" | "warning" | "error";
+  summary: string;
+  scope: string;
+  entries: ResolutionPreviewEntry[];
+}
+
+async function buildResolutionPreview(
+  compiler: CompilerService,
+  scope: vscode.Uri | undefined,
+  status: LanguageSpecStatus,
+): Promise<ResolutionPreview> {
+  const folder = workspaceFolderFor(scope);
+  const candidates = await compiler.findProjectLanguageSpecs(scope);
+  const displayPath = (uri: vscode.Uri): string => toWorkspacePathOrUri(uri, scope ?? uri);
+  const activeKey = status.uri?.toString();
+  const rootSpec = folder ? vscode.Uri.joinPath(folder.uri, "nwscript.nss") : undefined;
+  const rootKey = rootSpec?.toString();
+  const hasRoot = rootKey !== undefined && candidates.some((uri) => uri.toString() === rootKey);
+  const nested = candidates.filter((uri) => uri.toString() !== rootKey);
+  const entries: ResolutionPreviewEntry[] = candidates.map((uri) => {
+    const active = uri.toString() === activeKey;
+    return {
+      uri: uri.toString(),
+      path: displayPath(uri),
+      state: active ? "active" : activeKey ? "shadowed" : "available",
+      detail: active
+        ? "Selected for the active resource"
+        : activeKey
+          ? "Not selected at this scope"
+          : "Discovered candidate",
+      removable: true,
+    };
+  });
+
+  if (status.kind === "ambiguous") {
+    return {
+      severity: "error",
+      summary: "Resolution is ambiguous. No definition can be selected safely for this resource.",
+      scope: scope ? displayPath(scope) : "No active workspace resource",
+      entries,
+    };
+  }
+
+  if (hasRoot && nested.length > 0) {
+    return {
+      severity: "warning",
+      summary: `Workspace-root nwscript.nss overrides ${nested.length} nested definition${nested.length === 1 ? "" : "s"}, including game-specific definitions.`,
+      scope: scope ? displayPath(scope) : "Workspace folder",
+      entries: entries.map((entry) => entry.state === "active" ? entry : {
+        ...entry,
+        state: "shadowed",
+        detail: "Shadowed by workspace-root nwscript.nss",
+      }),
+    };
+  }
+
+  return {
+    severity: status.kind === "missing" ? "error" : "ok",
+    summary: status.kind === "missing"
+      ? status.label
+      : candidates.length > 1
+        ? "The nearest ancestor definition is selected for the active resource; other game trees remain isolated."
+        : "Resolution is unambiguous for the active resource.",
+    scope: scope ? displayPath(scope) : "No active workspace resource",
+    entries,
+  };
 }
 
 function renderHomeHtml(options: HomeHtmlOptions): string {
@@ -252,10 +355,6 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
     ? "status warning"
     : "status ok";
 
-  const targetSummary = options.embeddedTargets.length > 0
-    ? options.embeddedTargets.map(escapeHtml).join(", ")
-    : "None in this compiler build";
-
   const includeSummary = options.includePaths.length > 0
     ? options.includePaths.map(escapeHtml).join(", ")
     : "Workspace/project discovery";
@@ -263,6 +362,16 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
   const outputSummary = options.outputDirectory
     ? escapeHtml(options.outputDirectory)
     : "Beside source NSS";
+
+  const showResolutionActions = options.resolutionPreview.severity !== "ok";
+  const resolutionEntries = options.resolutionPreview.entries.length
+    ? options.resolutionPreview.entries.map((entry) => `
+        <div class="spec-row ${entry.state}">
+          <span class="spec-state">${escapeHtml(entry.state)}</span>
+          <div><code>${escapeHtml(entry.path)}</code><span>${escapeHtml(entry.detail)}</span></div>
+          ${showResolutionActions && entry.removable ? `<button class="remove-spec" data-remove-uri="${escapeHtml(entry.uri)}" title="Remove ${escapeHtml(entry.path)}">Remove…</button>` : ""}
+        </div>`).join("")
+    : `<div class="muted">No workspace nwscript.nss files were discovered.</div>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -365,6 +474,17 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
     }
     .status.ok { color: var(--vscode-testing-iconPassed, var(--vscode-foreground)); }
     .status.warning { color: var(--vscode-editorWarning-foreground, var(--vscode-foreground)); }
+    .resolution-preview { margin-top: 12px; display: grid; gap: 7px; }
+    .spec-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 9px 10px; border: 1px solid var(--vscode-panel-border); border-radius: 4px; }
+    .spec-row.active { border-color: var(--vscode-testing-iconPassed, var(--vscode-focusBorder)); }
+    .spec-row.shadowed { border-color: var(--vscode-editorWarning-foreground, var(--vscode-panel-border)); }
+    .spec-state { text-transform: uppercase; font-size: 10px; font-weight: 700; letter-spacing: .06em; padding-top: 2px; }
+    .spec-row.active .spec-state { color: var(--vscode-testing-iconPassed, var(--vscode-foreground)); }
+    .spec-row.shadowed .spec-state { color: var(--vscode-editorWarning-foreground, var(--vscode-foreground)); }
+    .spec-row code { overflow-wrap: anywhere; }
+    .spec-row div span { display: block; margin-top: 4px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+    .remove-spec { border: 0; color: var(--vscode-errorForeground); background: transparent; padding: 2px 4px; cursor: pointer; }
+    .remove-spec:hover { text-decoration: underline; }
     .kv { display: grid; grid-template-columns: minmax(120px, 150px) 1fr; gap: 8px 14px; margin-top: 12px; }
     .kv > div:nth-child(odd) { color: var(--vscode-descriptionForeground); }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
@@ -474,6 +594,21 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
           </article>
 
           <article class="card">
+            <h2>Language Definition Browser</h2>
+            <p class="muted">Browse canonical nwscript.nss definitions by game, inspect their metadata and source, then download the definition you need.</p>
+            <div class="actions"><button class="button" data-action="openLanguageDefinitionBrowser">Browse Definitions</button></div>
+          </article>
+
+          <article class="card">
+            <h2>nwscript.nss Resolution Preview</h2>
+            <div class="status ${options.resolutionPreview.severity === "ok" ? "ok" : "warning"}">${escapeHtml(options.resolutionPreview.severity === "ok" ? "Resolved" : options.resolutionPreview.severity === "warning" ? "Conflict detected" : "Resolution problem")}</div>
+            <p>${escapeHtml(options.resolutionPreview.summary)}</p>
+            <div class="muted">Scope: <code>${escapeHtml(options.resolutionPreview.scope)}</code></div>
+            <div class="resolution-preview">${resolutionEntries}</div>
+            <div class="actions"><button class="button secondary" data-action="refresh">Refresh Preview</button></div>
+          </article>
+
+          <article class="card">
             <h2>NWScript environment</h2>
             <div class="${specClass}">${escapeHtml(options.specStatus.label)}</div>
             <div class="muted">${escapeHtml(options.specStatus.detail)}</div>
@@ -482,11 +617,8 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
               <div>Optimization</div><div>${options.optimizationLevel}</div>
               <div>Compile on save</div><div>${options.compileOnSave ? "Enabled" : "Disabled"}</div>
               <div>NDB output</div><div>${options.generateDebug ? "Enabled" : "Disabled"}</div>
-              <div>Embedded targets</div><div>${targetSummary}</div>
             </div>
             <div class="actions">
-              <button class="button" data-action="selectTarget">Select Compiler Target</button>
-              <button class="button secondary" data-action="selectLanguageSpec">Choose nwscript.nss</button>
               <button class="button secondary" data-action="openSettings">Open Settings</button>
               <button class="button secondary" data-action="refresh">Refresh</button>
             </div>
@@ -507,12 +639,10 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
         <h1>How nwscript.nss is resolved</h1>
         <p>Resolution is scoped to the file you are working with and its workspace folder. Explicit configuration always wins; automatic project discovery is used only when no target has been pinned.</p>
         <ol class="resolution-list">
-          <li><strong>Explicit NWScript.nss</strong><code>nwscript.languageSpec</code> is used when configured for the active resource/workspace folder.</li>
-          <li><strong>Explicit embedded target</strong>An explicitly selected compiler target is used when no NWScript.nss file is configured.</li>
-          <li><strong>Workspace-root nwscript.nss</strong>During auto-detection, a file at the workspace-folder root is authoritative for that workspace folder.</li>
+          <li><strong>Workspace-root nwscript.nss</strong>A file at the workspace-folder root is authoritative for that workspace folder.</li>
           <li><strong>Nearest ancestor nwscript.nss</strong>If there is no workspace-root spec, the extension walks the active script's folder ancestry and uses the closest matching <code>nwscript.nss</code>. Deeper folders can therefore define a more specific game/custom API for their descendants.</li>
           <li><strong>Single discovered spec</strong>If no ancestor contains a spec but exactly one specification exists in the workspace folder, that file is used.</li>
-          <li><strong>Ambiguous</strong>If multiple unrelated specs remain, NWScript Workbench refuses to guess and asks you to choose one explicitly.</li>
+          <li><strong>Ambiguous</strong>If multiple unrelated specs remain, NWScript Workbench refuses to guess. Move the script into the appropriate tree or remove the conflict in the Home preview.</li>
         </ol>
         <div class="callout"><strong>Important:</strong> a workspace-root <code>nwscript.nss</code> is a workspace-wide authority. If you want separate KOTOR, TSL, or custom script trees to resolve independently, do not place a competing <code>nwscript.nss</code> at the common workspace root.</div>
       </section>
@@ -549,17 +679,11 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
             <div class="${specClass}">${escapeHtml(options.specStatus.label)}</div>
             <p class="muted">${escapeHtml(options.specStatus.detail)}</p>
             <div class="actions">
-              <button class="button" data-action="selectTarget">Select Compiler Target</button>
-              <button class="button secondary" data-action="selectLanguageSpec">Choose nwscript.nss</button>
             </div>
           </article>
 
           <article class="card full">
             <h2>Common settings</h2>
-            <div class="setting">
-              <div><label for="autoDetect">Auto-detect nwscript.nss</label><p>Resolve the applicable project language specification automatically when no NWScript.nss or embedded target is pinned.</p></div>
-              <input id="autoDetect" type="checkbox" data-setting="autoDetectLanguageSpec" ${options.autoDetectLanguageSpec ? "checked" : ""}>
-            </div>
             <div class="setting">
               <div><label for="compileOnSave">Compile on save</label><p>Compile NSS files automatically whenever they are saved.</p></div>
               <input id="compileOnSave" type="checkbox" data-setting="compileOnSave" ${options.compileOnSave ? "checked" : ""}>
@@ -603,7 +727,7 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
       <section id="page-help" class="page docs">
         <h2>Language specification resolution</h2>
         <p>NWScript APIs are defined by <code>nwscript.nss</code>. The extension resolves a language specification for the active resource before compilation, IntelliSense, signature help, hover documentation, and navigation features.</p>
-        <p>Explicit <code>nwscript.languageSpec</code> configuration wins first, followed by an explicit embedded target. Automatic discovery then prefers a workspace-root <code>nwscript.nss</code>; without one, the closest ancestor spec to the active script wins. If only one spec exists anywhere in the workspace folder, it can be used as the final unambiguous fallback.</p>
+        <p>Resolution is automatic and scoped to the active script. Discovery prefers a workspace-root <code>nwscript.nss</code>; without one, the closest ancestor spec to the script wins. If only one spec exists anywhere in the workspace folder, it is the final unambiguous fallback.</p>
 
         <h2>Organizing K1, K2, and custom scripts</h2>
         <p>For a workspace that contains scripts for more than one game or language-spec variant, keep each environment in its own folder. Put the matching <code>nwscript.nss</code> at that folder's root and keep the scripts/includes beneath it.</p>
@@ -629,8 +753,8 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
    ├─ nwscript.nss           # more specific spec
    └─ special_script.nss     # uses custom-api/nwscript.nss</pre>
 
-        <h2>Global NWScript.nss</h2>
-        <p>Use <strong>Choose nwscript.nss</strong> when you want to explicitly pin a language specification instead of relying on folder discovery. The selected file is stored in NWScript settings at the appropriate workspace/workspace-folder scope.</p>
+        <h2>Workspace-root NWScript.nss</h2>
+        <p>A root <code>nwscript.nss</code> applies to every script in that workspace folder and shadows nested definitions. Use it only when the entire workspace targets one API.</p>
 
         <h2>Includes</h2>
         <p>The extension recursively resolves <code>#include</code> resources before invoking the compiler and uses that same include graph for editor IntelliSense/navigation. Configure additional search roots with <code>nwscript.includePaths</code>.</p>
@@ -643,8 +767,8 @@ void main() {
         <h2>Troubleshooting</h2>
         <ul>
           <li><strong>Wrong API or completions:</strong> check which <code>nwscript.nss</code> applies to the script and make sure no workspace-root spec is unintentionally overriding nested project specs.</li>
-          <li><strong>No nwscript.nss found:</strong> add a spec to the relevant game/project folder or explicitly choose a NWScript.nss file.</li>
-          <li><strong>Multiple unrelated specs found:</strong> move scripts beneath the appropriate game folder or explicitly choose the desired language specification.</li>
+          <li><strong>No nwscript.nss found:</strong> add a spec to the relevant game/project folder.</li>
+          <li><strong>Multiple unrelated specs found:</strong> move scripts beneath the appropriate game folder or remove an offending definition from the Home preview.</li>
           <li><strong>Missing include:</strong> place the include within the project tree or add its directory to <code>nwscript.includePaths</code>.</li>
         </ul>
       </section>
@@ -696,6 +820,12 @@ void main() {
         if (!button.disabled) {
           vscode.postMessage({ type: button.dataset.action });
         }
+      });
+    });
+
+    document.querySelectorAll('[data-remove-uri]').forEach((button) => {
+      button.addEventListener('click', () => {
+        vscode.postMessage({ type: 'removeLanguageSpec', uri: button.dataset.removeUri });
       });
     });
 

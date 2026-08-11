@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1
+
+### NWScript editing
+
+- Home panel resolution preview for active, shadowed, and ambiguous `nwscript.nss` definitions, with conflict-removal actions
+- Metadata-driven Language Definition Browser for previewing and downloading canonical game definitions
+- Language definitions now resolve lazily from each script; manual and embedded target activation has been removed
+
 ## 0.1.0
 
 Initial public release.
