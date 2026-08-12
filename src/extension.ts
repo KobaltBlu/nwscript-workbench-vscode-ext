@@ -10,6 +10,7 @@ import { EngineApiService } from "./engineApi";
 import { registerLanguageFeatures } from "./languageFeatures";
 import { ScriptBrowser } from "./scriptBrowser";
 import { LanguageDefinitionBrowser } from "./languageDefinitionBrowser";
+import { registerSidebar } from "./sidebar";
 
 export function activate(context: vscode.ExtensionContext): void {
   const resolver = new ResourceResolver();
@@ -44,6 +45,9 @@ export function activate(context: vscode.ExtensionContext): void {
     scriptBrowser,
     languageDefinitionBrowser,
     home,
+    registerSidebar(context, async () => {
+      await home.open(vscode.window.activeTextEditor?.document.uri);
+    }),
   );
 
   registerLanguageFeatures(context, engineApi, resolver);
@@ -165,6 +169,9 @@ async function showHomeOnFirstRun(
   }
 
   await context.globalState.update(key, true);
+  if (!getSettings().autoOpenHome) {
+    return;
+  }
   await home.open(vscode.window.activeTextEditor?.document.uri);
 }
 

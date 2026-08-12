@@ -12,6 +12,7 @@ Run **NWScript Workbench: Open Home** to open the extension control center in an
 
 NWScript Workbench Home provides:
 
+- an Activity Bar sidebar entry that opens Home and links to the Script and Language Definition browsers
 - current workspace and active language-specification status
 - a workspace-wide language-definition resolution list showing every discovered `nwscript.nss` in resolution order, with coverage regions, active/shadowed/isolated states, and conflicting layouts, plus confirmed removal actions for offending files
 - automatic, script-scoped language-specification resolution and conflict controls
@@ -22,7 +23,7 @@ NWScript Workbench Home provides:
 - offline help for project language specifications, includes, configuration, and troubleshooting
 - links to the extension and compiler repositories
 
-The Home tab opens automatically once on first run and remains available from the Command Palette afterward.
+The Home tab opens automatically once on first run by default (`nwscript.autoOpenHome`). Turn that setting off to opt out. Home remains available from the Activity Bar, Command Palette, and editor title actions.
 
 ## Script Browser
 
@@ -273,6 +274,16 @@ A workspace-relative output directory can be configured:
 ```
 
 Compiles an NSS document after it is saved.
+
+### `nwscript.autoOpenHome`
+
+```json
+{
+  "nwscript.autoOpenHome": false
+}
+```
+
+When `true` (default), Home opens automatically the first time the extension activates. Set to `false` to opt out of that welcome launch. Manual opens from the Activity Bar, Command Palette, and editor actions are unchanged.
 
 ### `nwscript.optimizationLevel`
 

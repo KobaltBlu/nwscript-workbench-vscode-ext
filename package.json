@@ -43,6 +43,7 @@
     "onCommand:nwscript.openHome",
     "onCommand:nwscript.openScriptBrowser",
     "onCommand:nwscript.openLanguageDefinitionBrowser",
+    "onView:nwscript.sidebar",
     "onStartupFinished",
     "onLanguage:nwscript",
     "onCommand:nwscript.compileCurrentFile",
@@ -50,6 +51,25 @@
     "onCustomEditor:nwscript.ncsHex"
   ],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "nwscript-workbench",
+          "title": "NWScript Workbench",
+          "icon": "assets/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "nwscript-workbench": [
+        {
+          "id": "nwscript.sidebar",
+          "name": "NWScript Workbench",
+          "type": "webview",
+          "contextualTitle": "NWScript Workbench"
+        }
+      ]
+    },
     "languages": [
       {
         "id": "nwscript",
@@ -173,6 +193,12 @@
           "default": false,
           "description": "Compile NWScript files when they are saved.",
           "scope": "resource"
+        },
+        "nwscript.autoOpenHome": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open NWScript Workbench Home on first run. Turn this off to opt out of the welcome launch.",
+          "scope": "window"
         },
         "nwscript.optimizationLevel": {
           "type": "string",

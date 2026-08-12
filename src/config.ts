@@ -7,6 +7,7 @@ export interface NWScriptSettings {
   includePaths: string[];
   outputDirectory: string;
   compileOnSave: boolean;
+  autoOpenHome: boolean;
   optimizationLevel: OptimizationLevel;
   optimizationFlags: number;
   generateDebug: boolean;
@@ -22,6 +23,7 @@ export function getSettings(scope?: vscode.Uri): NWScriptSettings {
     includePaths: config.get<string[]>("includePaths", []),
     outputDirectory: config.get<string>("outputDirectory", "").trim(),
     compileOnSave: config.get<boolean>("compileOnSave", false),
+    autoOpenHome: config.get<boolean>("autoOpenHome", true),
     optimizationLevel,
     optimizationFlags: OptimizationFlags[optimizationLevel],
     generateDebug: config.get<boolean>("generateDebug", false),
