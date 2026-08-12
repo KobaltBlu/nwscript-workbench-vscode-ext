@@ -13,14 +13,13 @@ Run **NWScript Workbench: Open Home** to open the extension control center in an
 NWScript Workbench Home provides:
 
 - current workspace and active language-specification status
-- an active-resource resolution preview that identifies the selected `nwscript.nss`, shadowed definitions, and conflicting workspace layouts, with confirmed removal actions for offending files
+- a workspace-wide language-definition resolution list showing every discovered `nwscript.nss` in resolution order, with coverage regions, active/shadowed/isolated states, and conflicting layouts, plus confirmed removal actions for offending files
 - automatic, script-scoped language-specification resolution and conflict controls
 - inline controls for compile-on-save, optimization, and NDB output
 - summaries of include/output configuration
 - a clear explanation of how `nwscript.nss` is resolved for each script
 - recommended workspace layouts for K1, K2, and custom game targets
 - offline help for project language specifications, includes, configuration, and troubleshooting
-- a right-side Knowledge Base with focused articles for language-spec resolution and multi-game project layout
 - links to the extension and compiler repositories
 
 The Home tab opens automatically once on first run and remains available from the Command Palette afterward.
@@ -50,7 +49,7 @@ The extension resolves the `nwscript.nss` used by a script in this order:
 1. **Workspace-root specification** — `nwscript.nss` at the root of the active workspace folder.
 2. **Nearest ancestor specification** — the closest `nwscript.nss` above the script being edited or compiled.
 3. **Single discovered project specification** — if exactly one `nwscript.nss` exists in the workspace, it is used automatically.
-4. **Ambiguous** — if multiple specifications remain possible, the extension does not guess; use the Home resolution preview to identify and remove conflicts.
+4. **Ambiguous** — if multiple specifications remain possible, the extension does not guess; use the Home resolution list to identify coverage and remove conflicts.
 
 A workspace-root `nwscript.nss` is authoritative for that workspace folder. For projects that contain scripts for multiple games, we recommend placing each game in its own subfolder with its own `nwscript.nss` rather than putting a shared specification at the workspace root.
 

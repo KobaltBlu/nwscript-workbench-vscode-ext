@@ -7,10 +7,10 @@ import { compilerSettingsKey, getSettings } from "./config";
 import { CompilerDiagnostics } from "./diagnostics";
 import { ResourceResolver, type ResolvedSource } from "./resourceResolver";
 import {
+  basename,
   basenameWithoutExtension,
   dirname,
   resolveWorkspaceUri,
-  withExtension,
   workspaceFolderFor,
 } from "./uri";
 
@@ -35,7 +35,42 @@ export interface LanguageSpecSource {
   text?: string;
 }
 
+export type LanguageSpecResolutionEntryState =
+  | "active"
+  | "shadowed"
+  | "isolated"
+  | "ambiguous"
+  | "available";
+
+export interface LanguageSpecResolutionEntry {
+  uri: string;
+  path: string;
+  state: LanguageSpecResolutionEntryState;
+  detail: string;
+  removable: boolean;
+}
+
+export interface LanguageSpecResolutionExplain {
+  status: LanguageSpecStatus;
+  severity: "ok" | "warning" | "error";
+  summary: string;
+  scope: string;
+  candidates: vscode.Uri[];
+  active?: vscode.Uri;
+  truncated: boolean;
+  entries: LanguageSpecResolutionEntry[];
+}
+
 const decoder = new TextDecoder();
+const LANGUAGE_SPEC_FIND_LIMIT = 256;
+const NSS_SCRIPT_FIND_LIMIT = 10_000;
+const NSS_EXCLUDE = "**/{.git,node_modules,dist,out,build}/**";
+
+interface FolderLanguageSpecs {
+  folder: vscode.WorkspaceFolder;
+  matches: vscode.Uri[];
+  truncated: boolean;
+}
 
 export class CompilerService implements vscode.Disposable {
   private compiler?: NWScriptCompiler;
@@ -246,36 +281,101 @@ export class CompilerService implements vscode.Disposable {
     if (!folder) {
       return [];
     }
+    const result = await this.findLanguageSpecsInFolder(folder);
+    return result.matches;
+  }
 
-    // Do not rely on glob-provider semantics for the most common case.
-    // Some virtual/web file-system providers do not return a root-level file
-    // for a "**/nwscript.nss" search even though the pattern normally implies
-    // zero or more path segments.
-    const rootSpec = vscode.Uri.joinPath(folder.uri, "nwscript.nss");
+  /**
+   * Find nwscript.nss files across every workspace folder.
+   */
+  async findWorkspaceLanguageSpecs(): Promise<{
+    matches: vscode.Uri[];
+    truncated: boolean;
+  }> {
+    const folders = vscode.workspace.workspaceFolders ?? [];
     const matches: vscode.Uri[] = [];
+    let truncated = false;
 
-    try {
-      const stat = await vscode.workspace.fs.stat(rootSpec);
-      if ((stat.type & vscode.FileType.Directory) === 0) {
-        matches.push(rootSpec);
+    for (const folder of folders) {
+      const result = await this.findLanguageSpecsInFolder(folder);
+      truncated = truncated || result.truncated;
+      for (const uri of result.matches) {
+        if (!matches.some((candidate) => this.sameUri(candidate, uri))) {
+          matches.push(uri);
+        }
       }
-    } catch {
-      // No root-level nwscript.nss. Continue with recursive discovery.
     }
 
-    const discovered = await vscode.workspace.findFiles(
-      new vscode.RelativePattern(folder, "**/nwscript.nss"),
-      "**/{.git,node_modules,dist,out,build}/**",
-      64,
+    return {
+      matches: matches.sort((a, b) => a.path.localeCompare(b.path)),
+      truncated,
+    };
+  }
+
+  /**
+   * Build a workspace-wide resolution list for Home, including coverage
+   * partitions and which definition wins for the active scope.
+   */
+  async explainLanguageSpecResolution(
+    scope?: vscode.Uri,
+  ): Promise<LanguageSpecResolutionExplain> {
+    const status = await this.getLanguageSpecStatus(scope);
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const folderResults: FolderLanguageSpecs[] = [];
+    let truncated = false;
+
+    for (const folder of folders) {
+      const result = await this.findLanguageSpecsInFolder(folder);
+      truncated = truncated || result.truncated;
+      folderResults.push({ folder, matches: result.matches, truncated: result.truncated });
+    }
+
+    const candidates = folderResults
+      .flatMap((entry) => entry.matches)
+      .sort((a, b) => a.path.localeCompare(b.path));
+
+    const displayScope = scope
+      ? this.displayPath(scope, scope)
+      : folders.length > 0
+        ? "Workspace"
+        : "No active workspace resource";
+
+    const entries: LanguageSpecResolutionEntry[] = [];
+    let anyRootShadowing = false;
+
+    for (const entry of folderResults) {
+      const folderEntries = await this.buildFolderResolutionEntries(
+        entry.folder,
+        entry.matches,
+        status,
+        scope,
+        folderResults.length > 1,
+      );
+      if (folderEntries.rootShadowing) {
+        anyRootShadowing = true;
+      }
+      entries.push(...folderEntries.entries);
+    }
+
+    const severity = this.resolutionSeverity(status, anyRootShadowing);
+    const summary = this.resolutionSummary(
+      status,
+      candidates,
+      anyRootShadowing,
+      truncated,
+      folders.length,
     );
 
-    for (const uri of discovered) {
-      if (!matches.some((candidate) => this.sameUri(candidate, uri))) {
-        matches.push(uri);
-      }
-    }
-
-    return matches.sort((a, b) => a.path.localeCompare(b.path));
+    return {
+      status,
+      severity,
+      summary,
+      scope: displayScope,
+      candidates,
+      active: status.uri,
+      truncated,
+      entries,
+    };
   }
 
   /**
@@ -308,38 +408,9 @@ export class CompilerService implements vscode.Disposable {
     }
 
     const candidates = await this.findProjectLanguageSpecs(scope);
-    if (candidates.length === 0) {
-      return undefined;
-    }
-    if (candidates.length === 1) {
-      return candidates[0];
-    }
-
-    if (scope) {
-      const sourceDir = dirname(scope).path.replace(/\/$/, "");
-      const ancestors = candidates
-        .filter((candidate) => {
-          const candidateDir = dirname(candidate).path.replace(/\/$/, "");
-          return (
-            sourceDir === candidateDir ||
-            sourceDir.startsWith(`${candidateDir}/`)
-          );
-        })
-        .sort(
-          (a, b) =>
-            dirname(b).path.length - dirname(a).path.length ||
-            a.path.localeCompare(b.path),
-        );
-
-      if (ancestors.length > 0) {
-        const bestDepth = dirname(ancestors[0]).path.length;
-        const equallyClose = ancestors.filter(
-          (candidate) => dirname(candidate).path.length === bestDepth,
-        );
-        if (equallyClose.length === 1) {
-          return equallyClose[0];
-        }
-      }
+    const selected = selectNearestLanguageSpec(candidates, scope);
+    if (selected !== undefined || candidates.length === 0) {
+      return selected;
     }
 
     const labels = candidates
@@ -350,8 +421,318 @@ export class CompilerService implements vscode.Disposable {
 
     throw new Error(
       `Multiple nwscript.nss files were found and none is an unambiguous match: ${labels}${suffix}. ` +
-      "Move the script beneath the appropriate game folder or remove the conflicting definition from the Home resolution preview.",
+      "Move the script beneath the appropriate game folder or remove the conflicting definition from the Home resolution list.",
     );
+  }
+
+  private async findLanguageSpecsInFolder(
+    folder: vscode.WorkspaceFolder,
+  ): Promise<{ matches: vscode.Uri[]; truncated: boolean }> {
+    const matches: vscode.Uri[] = [];
+
+    // Prefer a filesystem walk over findFiles(). Virtual/web hosts (and some
+    // desktop search indexes) can miss newly created nested nwscript.nss files
+    // or fail case-sensitive globs that a direct directory read still sees.
+    const truncated = await this.collectLanguageSpecsByWalk(
+      folder.uri,
+      matches,
+      0,
+    );
+
+    if (matches.length === 0) {
+      const discovered = await vscode.workspace.findFiles(
+        new vscode.RelativePattern(folder, "**/nwscript.nss"),
+        NSS_EXCLUDE,
+        LANGUAGE_SPEC_FIND_LIMIT,
+      );
+      for (const uri of discovered) {
+        if (!matches.some((candidate) => this.sameUri(candidate, uri))) {
+          matches.push(uri);
+        }
+      }
+      return {
+        matches: matches.sort((a, b) => a.path.localeCompare(b.path)),
+        truncated: truncated || discovered.length >= LANGUAGE_SPEC_FIND_LIMIT,
+      };
+    }
+
+    return {
+      matches: matches.sort((a, b) => a.path.localeCompare(b.path)),
+      truncated,
+    };
+  }
+
+  private async collectLanguageSpecsByWalk(
+    directory: vscode.Uri,
+    matches: vscode.Uri[],
+    depth: number,
+  ): Promise<boolean> {
+    if (depth > 48 || matches.length >= LANGUAGE_SPEC_FIND_LIMIT) {
+      return matches.length >= LANGUAGE_SPEC_FIND_LIMIT;
+    }
+
+    let entries: [string, vscode.FileType][];
+    try {
+      entries = await vscode.workspace.fs.readDirectory(directory);
+    } catch {
+      return false;
+    }
+
+    let truncated = false;
+    for (const [name, type] of entries) {
+      if (matches.length >= LANGUAGE_SPEC_FIND_LIMIT) {
+        return true;
+      }
+
+      const lower = name.toLowerCase();
+      if (
+        lower === ".git" ||
+        lower === "node_modules" ||
+        lower === "dist" ||
+        lower === "out" ||
+        lower === "build"
+      ) {
+        continue;
+      }
+
+      const uri = vscode.Uri.joinPath(directory, name);
+      const isDirectory = (type & vscode.FileType.Directory) !== 0;
+      const isFile = (type & vscode.FileType.File) !== 0;
+
+      if (isFile && lower === "nwscript.nss") {
+        if (!matches.some((candidate) => this.sameUri(candidate, uri))) {
+          matches.push(uri);
+        }
+        continue;
+      }
+
+      if (isDirectory) {
+        truncated =
+          (await this.collectLanguageSpecsByWalk(uri, matches, depth + 1)) ||
+          truncated;
+      }
+    }
+
+    return truncated || matches.length >= LANGUAGE_SPEC_FIND_LIMIT;
+  }
+
+  private async buildFolderResolutionEntries(
+    folder: vscode.WorkspaceFolder,
+    candidates: vscode.Uri[],
+    status: LanguageSpecStatus,
+    scope: vscode.Uri | undefined,
+    multiRoot: boolean,
+  ): Promise<{ entries: LanguageSpecResolutionEntry[]; rootShadowing: boolean }> {
+    const rootSpec = candidates.find((uri) => this.isWorkspaceRootLanguageSpec(folder, uri));
+    const rootKey = rootSpec?.toString();
+    const hasRoot = rootKey !== undefined;
+    const rootShadowing = hasRoot && candidates.length > 1;
+    const activeKey = status.uri?.toString();
+    const scopeFolder = workspaceFolderFor(scope);
+    const inScopeFolder = scopeFolder?.index === folder.index;
+
+    const scriptUris = await this.findNssScriptsInFolder(folder);
+    const coverageByUri = this.computeCoverageCounts(
+      candidates,
+      scriptUris,
+      hasRoot,
+      rootKey ?? "",
+    );
+
+    const ordered = [...candidates].sort((a, b) => {
+      const aRoot = this.isWorkspaceRootLanguageSpec(folder, a) ? 0 : 1;
+      const bRoot = this.isWorkspaceRootLanguageSpec(folder, b) ? 0 : 1;
+      if (aRoot !== bRoot) {
+        return aRoot - bRoot;
+      }
+      const aDepth = this.relativeFolderPath(folder, dirname(a)).split("/").filter(Boolean).length;
+      const bDepth = this.relativeFolderPath(folder, dirname(b)).split("/").filter(Boolean).length;
+      return aDepth - bDepth || a.path.localeCompare(b.path);
+    });
+
+    const entries: LanguageSpecResolutionEntry[] = ordered.map((uri) => {
+      const key = uri.toString();
+      const relative = this.relativeFolderPath(folder, uri) || basename(uri);
+      const path = multiRoot ? `${folder.name}/${relative}` : relative;
+      const relativeDir = this.relativeFolderPath(folder, dirname(uri));
+      const coverageLabel = relativeDir ? `${relativeDir}/**` : "**";
+      const scriptCount = coverageByUri.get(key) ?? 0;
+      const isActive = key === activeKey;
+      const isRoot = key === rootKey;
+
+      let state: LanguageSpecResolutionEntryState;
+      let detail: string;
+
+      if (hasRoot && !isRoot) {
+        state = isActive ? "active" : "shadowed";
+        detail = isActive
+          ? `Selected for the active resource · shadowed coverage ${coverageLabel}`
+          : `Shadowed by workspace-root nwscript.nss · would cover ${coverageLabel}`;
+      } else if (isActive) {
+        state = "active";
+        detail = `Selected for the active resource · covers ${coverageLabel} · ${scriptCount} script${scriptCount === 1 ? "" : "s"}`;
+      } else if (status.kind === "ambiguous" && inScopeFolder) {
+        state = "ambiguous";
+        detail = `Ambiguous candidate · covers ${coverageLabel} · ${scriptCount} script${scriptCount === 1 ? "" : "s"}`;
+      } else if (hasRoot && isRoot) {
+        state = "available";
+        detail = `Authoritative workspace-root definition · covers ${coverageLabel} · ${scriptCount} script${scriptCount === 1 ? "" : "s"}`;
+      } else if (!hasRoot && candidates.length > 1) {
+        state = "isolated";
+        detail = `Isolated game tree · covers ${coverageLabel} · ${scriptCount} script${scriptCount === 1 ? "" : "s"}`;
+      } else {
+        state = "available";
+        detail = `Discovered candidate · covers ${coverageLabel} · ${scriptCount} script${scriptCount === 1 ? "" : "s"}`;
+      }
+
+      return {
+        uri: key,
+        path,
+        state,
+        detail,
+        removable: true,
+      };
+    });
+
+    return { entries, rootShadowing };
+  }
+
+  private async findNssScriptsInFolder(
+    folder: vscode.WorkspaceFolder,
+  ): Promise<vscode.Uri[]> {
+    return vscode.workspace.findFiles(
+      new vscode.RelativePattern(folder, "**/*.nss"),
+      NSS_EXCLUDE,
+      NSS_SCRIPT_FIND_LIMIT,
+    );
+  }
+
+  private computeCoverageCounts(
+    candidates: vscode.Uri[],
+    scriptUris: vscode.Uri[],
+    hasRoot: boolean,
+    rootKey: string,
+  ): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const candidate of candidates) {
+      counts.set(candidate.toString(), 0);
+    }
+
+    const candidateDirs = candidates.map((uri) => ({
+      key: uri.toString(),
+      dir: dirname(uri).path.replace(/\/$/, ""),
+    }));
+
+    for (const script of scriptUris) {
+      if (basename(script).toLowerCase() === "nwscript.nss") {
+        continue;
+      }
+
+      const scriptDir = dirname(script).path.replace(/\/$/, "");
+
+      if (hasRoot) {
+        const current = counts.get(rootKey) ?? 0;
+        counts.set(rootKey, current + 1);
+        continue;
+      }
+
+      const ancestors = candidateDirs
+        .filter(
+          (candidate) =>
+            scriptDir === candidate.dir ||
+            scriptDir.startsWith(`${candidate.dir}/`),
+        )
+        .sort((a, b) => b.dir.length - a.dir.length || a.key.localeCompare(b.key));
+
+      if (ancestors.length === 0) {
+        continue;
+      }
+
+      const bestDepth = ancestors[0].dir.length;
+      const equallyClose = ancestors.filter((candidate) => candidate.dir.length === bestDepth);
+      if (equallyClose.length !== 1) {
+        continue;
+      }
+
+      const key = equallyClose[0].key;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    return counts;
+  }
+
+  private isWorkspaceRootLanguageSpec(
+    folder: vscode.WorkspaceFolder,
+    uri: vscode.Uri,
+  ): boolean {
+    return (
+      basename(uri).toLowerCase() === "nwscript.nss" &&
+      this.sameUri(dirname(uri), folder.uri)
+    );
+  }
+
+  private relativeFolderPath(folder: vscode.WorkspaceFolder, uri: vscode.Uri): string {
+    const folderPath = folder.uri.path.replace(/\/$/, "");
+    const uriPath = uri.path.replace(/\/$/, "");
+    if (uriPath === folderPath) {
+      return "";
+    }
+    if (
+      folder.uri.scheme === uri.scheme &&
+      folder.uri.authority === uri.authority &&
+      uriPath.startsWith(`${folderPath}/`)
+    ) {
+      return uriPath.slice(folderPath.length + 1);
+    }
+    // Fall back to path-only matching for hosts that rewrite authority/scheme
+    // between workspace folder URIs and filesystem walk results.
+    if (uriPath.startsWith(`${folderPath}/`)) {
+      return uriPath.slice(folderPath.length + 1);
+    }
+    return uri.path.replace(/^\/+/, "");
+  }
+
+  private resolutionSeverity(
+    status: LanguageSpecStatus,
+    anyRootShadowing: boolean,
+  ): "ok" | "warning" | "error" {
+    if (status.kind === "ambiguous" || status.kind === "missing") {
+      return "error";
+    }
+    if (anyRootShadowing) {
+      return "warning";
+    }
+    return "ok";
+  }
+
+  private resolutionSummary(
+    status: LanguageSpecStatus,
+    candidates: vscode.Uri[],
+    anyRootShadowing: boolean,
+    truncated: boolean,
+    folderCount: number,
+  ): string {
+    const truncationNote = truncated
+      ? ` Discovery stopped after ${LANGUAGE_SPEC_FIND_LIMIT} matches per folder.`
+      : "";
+
+    if (status.kind === "ambiguous") {
+      return `Resolution is ambiguous. No definition can be selected safely for this resource.${truncationNote}`;
+    }
+    if (status.kind === "missing") {
+      return `${status.label}.${truncationNote}`;
+    }
+    if (anyRootShadowing) {
+      return `A workspace-root nwscript.nss overrides nested definitions in at least one folder, including game-specific definitions.${truncationNote}`;
+    }
+    if (candidates.length > 1) {
+      const scopeNote = folderCount > 1 ? " across workspace folders" : "";
+      return `Nearest-ancestor resolution applies${scopeNote}; isolated game trees remain independent.${truncationNote}`;
+    }
+    if (candidates.length === 1) {
+      return `Resolution is unambiguous; a single workspace definition was discovered.${truncationNote}`;
+    }
+    return `No nwscript.nss definitions were found in the workspace.${truncationNote}`;
   }
 
   private async readLanguageSpecSource(
@@ -510,4 +891,49 @@ export class CompilerService implements vscode.Disposable {
       resolveGate();
     }
   }
+}
+
+/**
+ * Prefer a unique nearest-ancestor nwscript.nss for scope, or the sole candidate.
+ * Returns undefined when zero candidates or when multiple candidates remain ambiguous.
+ */
+function selectNearestLanguageSpec(
+  candidates: vscode.Uri[],
+  scope?: vscode.Uri,
+): vscode.Uri | undefined {
+  if (candidates.length === 0) {
+    return undefined;
+  }
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+
+  if (!scope) {
+    return undefined;
+  }
+
+  const sourceDir = dirname(scope).path.replace(/\/$/, "");
+  const ancestors = candidates
+    .filter((candidate) => {
+      const candidateDir = dirname(candidate).path.replace(/\/$/, "");
+      return (
+        sourceDir === candidateDir ||
+        sourceDir.startsWith(`${candidateDir}/`)
+      );
+    })
+    .sort(
+      (a, b) =>
+        dirname(b).path.length - dirname(a).path.length ||
+        a.path.localeCompare(b.path),
+    );
+
+  if (ancestors.length === 0) {
+    return undefined;
+  }
+
+  const bestDepth = dirname(ancestors[0]).path.length;
+  const equallyClose = ancestors.filter(
+    (candidate) => dirname(candidate).path.length === bestDepth,
+  );
+  return equallyClose.length === 1 ? equallyClose[0] : undefined;
 }

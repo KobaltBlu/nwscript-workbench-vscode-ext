@@ -4,6 +4,10 @@
 
 ### NWScript editing
 
+- Home now shows a workspace-wide language-definition resolution list for every discovered `nwscript.nss` in resolution order (workspace root first, then nested paths), including coverage regions, script counts, and active/shadowed/isolated/ambiguous states across multi-root folders
+- Home resolution list auto-refreshes when `nwscript.nss` files are created, deleted, renamed, or when workspace folders change
+- Fixed language-definition discovery so nested `nwscript.nss` files (for example `games/k1/nwscript.nss`) are found via filesystem walk when `findFiles` misses them in web/virtual workspaces
+- Redesigned Workbench Home with a resolution-first dashboard, responsive navigation, streamlined settings, and an integrated project guide
 - Home panel resolution preview for active, shadowed, and ambiguous `nwscript.nss` definitions, with conflict-removal actions
 - Metadata-driven Language Definition Browser for previewing and downloading canonical game definitions
 - Language definitions now resolve lazily from each script; manual and embedded target activation has been removed

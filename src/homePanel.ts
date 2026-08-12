@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
-import { CompilerService, type LanguageSpecStatus } from "./compilerService";
+import { CompilerService, type LanguageSpecResolutionEntry, type LanguageSpecStatus } from "./compilerService";
 import { getSettings, type OptimizationLevel } from "./config";
-import { toWorkspacePathOrUri, workspaceFolderFor } from "./uri";
+import { basename, toWorkspacePathOrUri, workspaceFolderFor } from "./uri";
 
 const HOME_VIEW_TYPE = "nwscript.home";
 
@@ -16,15 +16,22 @@ export class NWScriptHomePanel implements vscode.Disposable {
   private panel?: vscode.WebviewPanel;
   private scope?: vscode.Uri;
   private renderSerial = 0;
+  private languageSpecRefreshTimer?: ReturnType<typeof setTimeout>;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly compiler: CompilerService,
     private readonly onConfigurationChanged: () => void,
-  ) {}
+  ) {
+    this.registerLanguageSpecWatchers();
+  }
 
   dispose(): void {
+    if (this.languageSpecRefreshTimer !== undefined) {
+      clearTimeout(this.languageSpecRefreshTimer);
+      this.languageSpecRefreshTimer = undefined;
+    }
     this.panel?.dispose();
     for (const disposable of this.disposables.splice(0)) {
       disposable.dispose();
@@ -47,6 +54,7 @@ export class NWScriptHomePanel implements vscode.Disposable {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "assets")],
       },
     );
 
@@ -78,22 +86,21 @@ export class NWScriptHomePanel implements vscode.Disposable {
     const serial = ++this.renderSerial;
     const settings = getSettings(this.scope);
 
-    const specStatus = await this.compiler.getLanguageSpecStatus(this.scope);
-
-    const resolutionPreview = await buildResolutionPreview(
-      this.compiler,
-      this.scope,
-      specStatus,
-    );
+    const resolutionPreview = await buildResolutionPreview(this.compiler, this.scope);
+    const specStatus = resolutionPreview.status;
 
     if (!this.panel || serial !== this.renderSerial) {
       return;
     }
 
     const folder = workspaceFolderFor(this.scope);
+    const logoUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, "assets", "logo.png"),
+    ).toString();
 
-    this.panel.webview.html = renderHomeHtml({
+    this.panel.webview.html = renderWorkbenchHomeHtml({
       webview: this.panel.webview,
+      logoUri,
       extensionVersion: String(this.context.extension.packageJSON.version ?? ""),
       workspaceName: folder?.name ?? "No workspace folder",
       specStatus,
@@ -106,6 +113,55 @@ export class NWScriptHomePanel implements vscode.Disposable {
       maxIncludeDepth: settings.maxIncludeDepth,
       maxResolveAttempts: settings.maxResolveAttempts,
     });
+  }
+
+  private registerLanguageSpecWatchers(): void {
+    const watcher = vscode.workspace.createFileSystemWatcher("**/*.nss");
+    this.disposables.push(
+      watcher,
+      watcher.onDidCreate((uri) => this.onLanguageSpecUriEvent(uri)),
+      watcher.onDidChange((uri) => this.onLanguageSpecUriEvent(uri)),
+      watcher.onDidDelete((uri) => this.onLanguageSpecUriEvent(uri)),
+      vscode.workspace.onDidCreateFiles((event) => {
+        if (event.files.some(isLanguageSpecUri)) {
+          this.scheduleLanguageSpecRefresh();
+        }
+      }),
+      vscode.workspace.onDidDeleteFiles((event) => {
+        if (event.files.some(isLanguageSpecUri)) {
+          this.scheduleLanguageSpecRefresh();
+        }
+      }),
+      vscode.workspace.onDidRenameFiles((event) => {
+        if (
+          event.files.some(
+            (item) => isLanguageSpecUri(item.oldUri) || isLanguageSpecUri(item.newUri),
+          )
+        ) {
+          this.scheduleLanguageSpecRefresh();
+        }
+      }),
+      vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        this.scheduleLanguageSpecRefresh();
+      }),
+    );
+  }
+
+  private onLanguageSpecUriEvent(uri: vscode.Uri): void {
+    if (isLanguageSpecUri(uri)) {
+      this.scheduleLanguageSpecRefresh();
+    }
+  }
+
+  private scheduleLanguageSpecRefresh(): void {
+    if (this.languageSpecRefreshTimer !== undefined) {
+      clearTimeout(this.languageSpecRefreshTimer);
+    }
+    this.languageSpecRefreshTimer = setTimeout(() => {
+      this.languageSpecRefreshTimer = undefined;
+      // Invalidate compiler caches and refresh Home when it is open.
+      this.onConfigurationChanged();
+    }, 120);
   }
 
   private async handleMessage(message: HomeMessage): Promise<void> {
@@ -196,8 +252,8 @@ export class NWScriptHomePanel implements vscode.Disposable {
   private async removeLanguageSpec(value: string | undefined): Promise<void> {
     if (!value) throw new Error("No language specification was selected for removal.");
     const requested = vscode.Uri.parse(value, true);
-    const candidates = await this.compiler.findProjectLanguageSpecs(this.scope);
-    const target = candidates.find((candidate) => candidate.toString() === requested.toString());
+    const candidates = await this.compiler.findWorkspaceLanguageSpecs();
+    const target = candidates.matches.find((candidate) => candidate.toString() === requested.toString());
     if (!target) {
       throw new Error("The selected file is no longer a discovered workspace nwscript.nss.");
     }
@@ -241,6 +297,10 @@ function currentScope(): vscode.Uri | undefined {
   );
 }
 
+function isLanguageSpecUri(uri: vscode.Uri): boolean {
+  return basename(uri).toLowerCase() === "nwscript.nss";
+}
+
 function configurationTarget(scope?: vscode.Uri): vscode.ConfigurationTarget {
   return scope && vscode.workspace.getWorkspaceFolder(scope)
     ? vscode.ConfigurationTarget.WorkspaceFolder
@@ -253,6 +313,7 @@ function isOptimizationLevel(value: unknown): value is OptimizationLevel {
 
 interface HomeHtmlOptions {
   webview: vscode.Webview;
+  logoUri: string;
   extensionVersion: string;
   workspaceName: string;
   specStatus: LanguageSpecStatus;
@@ -266,81 +327,270 @@ interface HomeHtmlOptions {
   maxResolveAttempts: number;
 }
 
-interface ResolutionPreviewEntry {
-  uri: string;
-  path: string;
-  state: "active" | "shadowed" | "available";
-  detail: string;
-  removable: boolean;
-}
-
 interface ResolutionPreview {
+  status: LanguageSpecStatus;
   severity: "ok" | "warning" | "error";
   summary: string;
   scope: string;
-  entries: ResolutionPreviewEntry[];
+  truncated: boolean;
+  entries: LanguageSpecResolutionEntry[];
 }
 
 async function buildResolutionPreview(
   compiler: CompilerService,
   scope: vscode.Uri | undefined,
-  status: LanguageSpecStatus,
 ): Promise<ResolutionPreview> {
-  const folder = workspaceFolderFor(scope);
-  const candidates = await compiler.findProjectLanguageSpecs(scope);
-  const displayPath = (uri: vscode.Uri): string => toWorkspacePathOrUri(uri, scope ?? uri);
-  const activeKey = status.uri?.toString();
-  const rootSpec = folder ? vscode.Uri.joinPath(folder.uri, "nwscript.nss") : undefined;
-  const rootKey = rootSpec?.toString();
-  const hasRoot = rootKey !== undefined && candidates.some((uri) => uri.toString() === rootKey);
-  const nested = candidates.filter((uri) => uri.toString() !== rootKey);
-  const entries: ResolutionPreviewEntry[] = candidates.map((uri) => {
-    const active = uri.toString() === activeKey;
-    return {
-      uri: uri.toString(),
-      path: displayPath(uri),
-      state: active ? "active" : activeKey ? "shadowed" : "available",
-      detail: active
-        ? "Selected for the active resource"
-        : activeKey
-          ? "Not selected at this scope"
-          : "Discovered candidate",
-      removable: true,
-    };
-  });
-
-  if (status.kind === "ambiguous") {
-    return {
-      severity: "error",
-      summary: "Resolution is ambiguous. No definition can be selected safely for this resource.",
-      scope: scope ? displayPath(scope) : "No active workspace resource",
-      entries,
-    };
-  }
-
-  if (hasRoot && nested.length > 0) {
-    return {
-      severity: "warning",
-      summary: `Workspace-root nwscript.nss overrides ${nested.length} nested definition${nested.length === 1 ? "" : "s"}, including game-specific definitions.`,
-      scope: scope ? displayPath(scope) : "Workspace folder",
-      entries: entries.map((entry) => entry.state === "active" ? entry : {
-        ...entry,
-        state: "shadowed",
-        detail: "Shadowed by workspace-root nwscript.nss",
-      }),
-    };
-  }
-
+  const explained = await compiler.explainLanguageSpecResolution(scope);
   return {
-    severity: status.kind === "missing" ? "error" : "ok",
-    summary: status.kind === "missing"
-      ? status.label
-      : candidates.length > 1
-        ? "The nearest ancestor definition is selected for the active resource; other game trees remain isolated."
-        : "Resolution is unambiguous for the active resource.",
-    scope: scope ? displayPath(scope) : "No active workspace resource",
-    entries,
+    status: explained.status,
+    severity: explained.severity,
+    summary: explained.summary,
+    scope: explained.scope,
+    truncated: explained.truncated,
+    entries: explained.entries,
   };
+}
+
+function renderResolutionList(
+  entries: LanguageSpecResolutionEntry[],
+  canRemove: boolean,
+): string {
+  if (entries.length === 0) {
+    return `<div class="empty-state"><span aria-hidden="true">◇</span><div><strong>No definitions found</strong><p>Download a canonical definition or add nwscript.nss to this workspace.</p><button class="button" data-action="openLanguageDefinitionBrowser">Browse language definitions</button></div></div>`;
+  }
+
+  return entries.map((entry) => {
+    const remove = canRemove && entry.removable
+      ? `<button class="text-danger" data-remove-uri="${escapeHtml(entry.uri)}" aria-label="Remove ${escapeHtml(entry.path)}">Remove…</button>`
+      : "";
+    return `
+      <div class="definition-row ${escapeHtml(entry.state)}">
+        <span class="definition-mark" aria-hidden="true"></span>
+        <div class="definition-copy">
+          <div class="definition-topline">
+            <span class="definition-state">${escapeHtml(entry.state)}</span>
+            <code>${escapeHtml(entry.path)}</code>
+          </div>
+          <p>${escapeHtml(entry.detail)}</p>
+        </div>
+        ${remove}
+      </div>`;
+  }).join("");
+}
+
+function renderWorkbenchHomeHtml(options: HomeHtmlOptions): string {
+  const nonce = createNonce();
+  const csp = [
+    "default-src 'none'",
+    `style-src ${options.webview.cspSource} 'unsafe-inline'`,
+    `img-src ${options.webview.cspSource}`,
+    `script-src 'nonce-${nonce}'`,
+  ].join("; ");
+  const preview = options.resolutionPreview;
+  const tone = preview.severity;
+  const stateLabel = tone === "ok" ? "Resolved" : tone === "warning" ? "Conflict" : "Error";
+  const stateIcon = tone === "ok" ? "✓" : tone === "warning" ? "!" : "×";
+  const includeSummary = options.includePaths.length
+    ? options.includePaths.map(escapeHtml).join(", ")
+    : "Automatic workspace discovery";
+  const outputSummary = options.outputDirectory
+    ? escapeHtml(options.outputDirectory)
+    : "Next to source script";
+  const canRemove = tone !== "ok";
+  const definitionRows = renderResolutionList(preview.entries, canRemove);
+  const truncationNote = preview.truncated
+    ? `<p class="list-note">Discovery may be incomplete; the per-folder definition scan hit its limit.</p>`
+    : "";
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NWScript Workbench</title>
+  <style>
+    :root { color-scheme: light dark; --page: min(1180px, calc(100% - 40px)); --radius: 10px; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 280px; color: var(--vscode-foreground); background: var(--vscode-editor-background); font: 13px/1.5 var(--vscode-font-family); }
+    button, select, input { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+    code { font-family: var(--vscode-editor-font-family); font-size: .92em; overflow-wrap: anywhere; }
+    p { margin: 0; }
+    .topbar { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--vscode-panel-border); background: color-mix(in srgb, var(--vscode-editor-background) 94%, transparent); backdrop-filter: blur(12px); }
+    .topbar-inner { width: var(--page); min-height: 58px; margin: auto; display: flex; align-items: center; gap: 22px; }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 230px; }
+    .brand-logo { width: 34px; height: 34px; display: block; object-fit: contain; }
+    .brand strong, .brand span { display: block; }
+    .brand strong { font-size: 13px; }
+    .brand span { color: var(--vscode-descriptionForeground); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+    .nav { margin-left: auto; display: flex; align-self: stretch; }
+    .nav button { position: relative; border: 0; padding: 0 13px; color: var(--vscode-descriptionForeground); background: transparent; }
+    .nav button:hover { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground); }
+    .nav button.active { color: var(--vscode-foreground); }
+    .nav button.active::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--vscode-focusBorder); }
+    .version { color: var(--vscode-descriptionForeground); font-size: 11px; }
+    main { width: var(--page); margin: auto; padding: 32px 0 56px; }
+    .page { display: none; }
+    .page.active { display: block; }
+    .welcome { margin-bottom: 20px; display: flex; justify-content: space-between; gap: 24px; align-items: end; }
+    .eyebrow { margin-bottom: 5px; color: var(--vscode-descriptionForeground); font-size: 11px; font-weight: 600; }
+    h1, h2, h3 { margin: 0; line-height: 1.2; }
+    h1 { font-size: 24px; }
+    h2 { font-size: 16px; }
+    h3 { font-size: 13px; }
+    .welcome p { margin-top: 5px; color: var(--vscode-descriptionForeground); }
+    .button { min-height: 32px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 5px; padding: 6px 12px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+    .button:hover { background: var(--vscode-button-hoverBackground); }
+    .button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+    .button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+    .overview-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(285px, .75fr); gap: 18px; align-items: start; }
+    .stack { display: grid; gap: 18px; }
+    .panel { border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: var(--radius); background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); overflow: hidden; }
+    .panel-body { padding: 20px; }
+    .panel-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 16px; }
+    .panel-head p { margin-top: 5px; color: var(--vscode-descriptionForeground); }
+    .resolution-hero { padding: 20px; border-bottom: 1px solid var(--vscode-panel-border); }
+    .resolution-title { display: flex; align-items: center; gap: 11px; }
+    .state-icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; font-weight: 800; }
+    .state-icon.ok { color: var(--vscode-testing-iconPassed); background: color-mix(in srgb, var(--vscode-testing-iconPassed) 14%, transparent); }
+    .state-icon.warning { color: var(--vscode-editorWarning-foreground); background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 14%, transparent); }
+    .state-icon.error { color: var(--vscode-errorForeground); background: color-mix(in srgb, var(--vscode-errorForeground) 14%, transparent); }
+    .status-label { color: var(--vscode-descriptionForeground); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .resolution-hero h2 { margin-top: 2px; font-size: 17px; }
+    .resolution-summary { margin-top: 12px; max-width: 760px; }
+    .scope { margin-top: 14px; display: flex; gap: 8px; align-items: baseline; color: var(--vscode-descriptionForeground); }
+    .scope code { color: var(--vscode-foreground); }
+    .definitions { padding: 8px 14px 14px; }
+    .list-note { margin: 4px 8px 10px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+    .definition-row { min-width: 0; display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 8px; border-bottom: 1px solid var(--vscode-panel-border); }
+    .definition-row:last-child { border-bottom: 0; }
+    .definition-mark { width: 8px; height: 8px; border-radius: 50%; background: var(--vscode-descriptionForeground); }
+    .definition-row.active .definition-mark { background: var(--vscode-testing-iconPassed); box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-testing-iconPassed) 17%, transparent); }
+    .definition-row.shadowed .definition-mark { background: var(--vscode-editorWarning-foreground); }
+    .definition-row.isolated .definition-mark { background: var(--vscode-textLink-foreground); }
+    .definition-row.ambiguous .definition-mark { background: var(--vscode-errorForeground); }
+    .definition-topline { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+    .definition-state { flex: none; color: var(--vscode-descriptionForeground); font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+    .definition-copy p { margin-top: 3px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+    .text-danger { border: 0; padding: 5px 6px; color: var(--vscode-errorForeground); background: transparent; }
+    .text-danger:hover { text-decoration: underline; }
+    .empty-state { display: flex; gap: 12px; align-items: center; padding: 20px 8px 12px; color: var(--vscode-descriptionForeground); }
+    .empty-state > span { font-size: 24px; }
+    .empty-state strong { color: var(--vscode-foreground); }
+    .empty-state .button { margin-top: 12px; }
+    .panel-footer { padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; border-top: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
+    .panel-footer span { color: var(--vscode-descriptionForeground); font-size: 12px; }
+    .action-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .action-card { min-height: 82px; border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 13px; text-align: left; color: var(--vscode-foreground); background: transparent; }
+    .action-card:hover { border-color: var(--vscode-focusBorder); background: var(--vscode-list-hoverBackground); }
+    .action-card strong, .action-card span { display: block; }
+    .action-card span { margin-top: 4px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+    .setting-rows { display: grid; }
+    .setting-row { min-height: 55px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--vscode-panel-border); }
+    .setting-row:last-child { border-bottom: 0; }
+    .setting-row p { margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+    select { min-width: 84px; padding: 5px 8px; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); border: 1px solid var(--vscode-dropdown-border); border-radius: 4px; }
+    .toggle { position: relative; width: 34px; height: 20px; flex: none; }
+    .toggle input { position: absolute; opacity: 0; }
+    .toggle span { position: absolute; inset: 0; border-radius: 10px; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); }
+    .toggle span::after { content: ""; position: absolute; width: 14px; height: 14px; left: 2px; top: 2px; border-radius: 50%; background: var(--vscode-descriptionForeground); transition: transform .15s; }
+    .toggle input:checked + span { background: var(--vscode-button-background); }
+    .toggle input:checked + span::after { transform: translateX(14px); background: var(--vscode-button-foreground); }
+    .toggle input:focus-visible + span { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+    .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .fact { padding: 13px; border-radius: 7px; background: var(--vscode-textCodeBlock-background); }
+    .fact span, .fact strong { display: block; }
+    .fact span { color: var(--vscode-descriptionForeground); font-size: 11px; }
+    .fact strong { margin-top: 4px; font-weight: 600; overflow-wrap: anywhere; }
+    .section-title { margin-bottom: 20px; }
+    .section-title p { margin-top: 7px; color: var(--vscode-descriptionForeground); max-width: 700px; }
+    .settings-layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(260px, .7fr); gap: 18px; }
+    .guide-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .guide-card { padding: 20px; }
+    .guide-card.full { grid-column: 1 / -1; }
+    .guide-card h2 { margin-bottom: 9px; }
+    .guide-card p, .guide-card li { color: var(--vscode-descriptionForeground); }
+    .guide-card li { margin: 8px 0; }
+    .guide-card strong { color: var(--vscode-foreground); }
+    pre { margin: 14px 0 0; overflow: auto; padding: 14px; border-radius: 7px; background: var(--vscode-textCodeBlock-background); font: 12px/1.55 var(--vscode-editor-font-family); }
+    .callout { margin-top: 14px; padding: 12px 14px; border-left: 3px solid var(--vscode-editorWarning-foreground); background: var(--vscode-textBlockQuote-background); }
+    .about-card { max-width: 760px; }
+    .about-actions { margin-top: 18px; display: flex; gap: 8px; flex-wrap: wrap; }
+    @media (max-width: 850px) { .overview-grid, .settings-layout { grid-template-columns: 1fr; } .action-list { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 620px) { :root { --page: calc(100% - 24px); } .topbar-inner { min-height: auto; padding-top: 10px; display: grid; grid-template-columns: 1fr auto; } .brand { min-width: 0; } .version { display: none; } .nav { grid-column: 1 / -1; margin: 0; overflow-x: auto; align-self: auto; } .nav button { min-height: 38px; } main { padding-top: 22px; } .welcome { align-items: start; flex-direction: column; } .welcome .button { display: none; } .action-list, .facts, .guide-grid { grid-template-columns: 1fr; } .guide-card.full { grid-column: auto; } .definition-row { grid-template-columns: 10px minmax(0, 1fr); } .definition-row .text-danger { grid-column: 2; justify-self: start; } .definition-topline { align-items: start; flex-direction: column; gap: 2px; } .panel-footer { align-items: start; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><img class="brand-logo" src="${escapeHtml(options.logoUri)}" alt=""><div><strong>NWScript Workbench</strong><span title="${escapeHtml(options.workspaceName)}">${escapeHtml(options.workspaceName)}</span></div></div>
+      <nav class="nav" aria-label="Workbench sections">
+        <button class="active" data-page="overview">Overview</button>
+        <button data-page="settings">Settings</button>
+        <button data-page="guide">Guide</button>
+        <button data-page="about">About</button>
+      </nav>
+      <span class="version">v${escapeHtml(options.extensionVersion)}</span>
+    </div>
+  </header>
+  <main>
+    <section id="page-overview" class="page active">
+      <div class="welcome"><div><div class="eyebrow">Workspace</div><h1>NWScript workspace</h1><p>Language definition resolution and compiler configuration.</p></div><button class="button secondary" data-action="refresh">Refresh</button></div>
+      <div class="overview-grid">
+        <div class="stack">
+          <article class="panel">
+            <div class="resolution-hero"><div class="resolution-title"><span class="state-icon ${tone}" aria-hidden="true">${stateIcon}</span><div><span class="status-label">${stateLabel}</span><h2>Language definition resolution</h2></div></div><p class="resolution-summary">${escapeHtml(preview.summary)}</p><div class="scope"><span>Evaluated for</span><code>${escapeHtml(preview.scope)}</code></div></div>
+            <div class="definitions">${truncationNote}${definitionRows}</div>
+            <div class="panel-footer"><span>${escapeHtml(options.specStatus.detail)}</span><button class="button secondary" data-page-link="guide">Resolution rules</button></div>
+          </article>
+          <article class="panel"><div class="panel-body"><div class="panel-head"><div><h2>Repositories</h2><p>Browse upstream NWScript files.</p></div></div><div class="action-list"><button class="action-card" data-action="openScriptBrowser"><strong>Script sources</strong><span>Search, preview, or download KOTOR and TSL scripts.</span></button><button class="action-card" data-action="openLanguageDefinitionBrowser"><strong>Language definitions</strong><span>Inspect or download canonical nwscript.nss files.</span></button></div></div></article>
+        </div>
+        <aside class="stack">
+          <article class="panel"><div class="panel-body"><div class="panel-head"><div><h2>Compiler</h2><p>Workspace settings.</p></div></div><div class="setting-rows">
+            <div class="setting-row"><div><h3>Compile on save</h3><p>Build NSS whenever it is saved.</p></div><label class="toggle"><input type="checkbox" aria-label="Compile on save" data-setting="compileOnSave" ${options.compileOnSave ? "checked" : ""}><span></span></label></div>
+            <div class="setting-row"><div><h3>Optimization</h3><p>Compiler optimization preset.</p></div><select aria-label="Optimization level" data-setting="optimizationLevel">${["O0", "O1", "O2", "O3"].map((level) => `<option value="${level}" ${level === options.optimizationLevel ? "selected" : ""}>${level}</option>`).join("")}</select></div>
+            <div class="setting-row"><div><h3>Generate NDB</h3><p>Write debugger metadata.</p></div><label class="toggle"><input type="checkbox" aria-label="Generate NDB" data-setting="generateDebug" ${options.generateDebug ? "checked" : ""}><span></span></label></div>
+          </div></div><div class="panel-footer"><span>More controls are available in VS Code Settings.</span><button class="button secondary" data-action="openSettings">Open settings</button></div></article>
+          <article class="panel"><div class="panel-body"><div class="panel-head"><div><h2>Resolved values</h2></div></div><div class="facts"><div class="fact"><span>Workspace</span><strong>${escapeHtml(options.workspaceName)}</strong></div><div class="fact"><span>Output</span><strong>${outputSummary}</strong></div><div class="fact"><span>Include depth</span><strong>${options.maxIncludeDepth}</strong></div><div class="fact"><span>Resolve attempts</span><strong>${options.maxResolveAttempts}</strong></div></div></div></article>
+        </aside>
+      </div>
+    </section>
+    <section id="page-settings" class="page">
+      <div class="section-title"><div class="eyebrow">Workspace</div><h1>Compiler settings</h1><p>Common options are editable here. Paths and limits are available in VS Code Settings.</p></div>
+      <div class="settings-layout"><article class="panel"><div class="panel-body"><div class="setting-rows">
+        <div class="setting-row"><div><h2>Compile on save</h2><p>Compile NWScript files automatically whenever they are saved.</p></div><label class="toggle"><input type="checkbox" aria-label="Compile on save" data-setting="compileOnSave" ${options.compileOnSave ? "checked" : ""}><span></span></label></div>
+        <div class="setting-row"><div><h2>Optimization level</h2><p>Select the optimization preset passed to the WebAssembly compiler.</p></div><select aria-label="Optimization level" data-setting="optimizationLevel">${["O0", "O1", "O2", "O3"].map((level) => `<option value="${level}" ${level === options.optimizationLevel ? "selected" : ""}>${level}</option>`).join("")}</select></div>
+        <div class="setting-row"><div><h2>Generate NDB output</h2><p>Emit debugger metadata alongside successful NCS output.</p></div><label class="toggle"><input type="checkbox" aria-label="Generate NDB output" data-setting="generateDebug" ${options.generateDebug ? "checked" : ""}><span></span></label></div>
+      </div></div></article><aside class="stack"><article class="panel"><div class="panel-body"><div class="panel-head"><div><h2>Resolved configuration</h2><p>Read-only summary of advanced settings.</p></div></div><div class="facts"><div class="fact"><span>Include paths</span><strong>${includeSummary}</strong></div><div class="fact"><span>Output directory</span><strong>${outputSummary}</strong></div><div class="fact"><span>Max include depth</span><strong>${options.maxIncludeDepth}</strong></div><div class="fact"><span>Max resolve attempts</span><strong>${options.maxResolveAttempts}</strong></div></div></div><div class="panel-footer"><span>Edit paths and limits in VS Code Settings.</span><button class="button" data-action="openSettings">Advanced settings</button></div></article></aside></div>
+    </section>
+    <section id="page-guide" class="page">
+      <div class="section-title"><div class="eyebrow">Reference</div><h1>Project layout and resolution</h1><p>The active script determines its API. Keep each game definition above the scripts that use it.</p></div>
+      <div class="guide-grid"><article class="panel guide-card"><h2>Resolution order</h2><ol><li><strong>Workspace root:</strong> authoritative for the entire workspace.</li><li><strong>Nearest ancestor:</strong> closest nwscript.nss above the active script.</li><li><strong>Single candidate:</strong> the only definition discovered in the workspace.</li><li><strong>Ambiguous:</strong> no choice is made when unrelated candidates remain.</li></ol></article><article class="panel guide-card"><h2>When a conflict appears</h2><p>A root definition shadows nested game definitions. Use the Overview resolution list to inspect coverage, then remove the unwanted file or reorganize the workspace so each script sits beneath the correct game folder.</p><div class="callout"><strong>Tip:</strong> use one root definition only when every script targets the same game API.</div></article><article class="panel guide-card full"><h2>Recommended layout</h2><pre>My NWScript Workspace/
+├─ games/
+│  ├─ k1/
+│  │  ├─ nwscript.nss
+│  │  └─ scripts/
+│  └─ k2/
+│     ├─ nwscript.nss
+│     └─ scripts/
+└─ shared-includes/</pre></article><article class="panel guide-card"><h2>Includes</h2><p>Includes resolve beside the source first, then through configured include paths and workspace discovery. Keep game-specific includes inside the matching game tree.</p></article><article class="panel guide-card"><h2>Troubleshooting</h2><ul><li>Wrong completions: inspect Overview for a shadowing root definition in the resolution list.</li><li>No API found: download or add nwscript.nss above the script.</li><li>Ambiguous API: move the script into a game tree or remove a candidate.</li></ul></article></div>
+    </section>
+    <section id="page-about" class="page"><div class="section-title"><div class="eyebrow">Extension</div><h1>NWScript Workbench</h1></div><article class="panel about-card"><div class="panel-body"><div class="facts"><div class="fact"><span>Version</span><strong>${escapeHtml(options.extensionVersion)}</strong></div><div class="fact"><span>Workspace</span><strong>${escapeHtml(options.workspaceName)}</strong></div><div class="fact"><span>Compiler</span><strong>KobaltBlu/nwscript-wasm</strong></div><div class="fact"><span>Runtime</span><strong>WebAssembly</strong></div></div><div class="about-actions"><button class="button secondary" data-action="openExtensionRepository">Extension repository</button><button class="button secondary" data-action="openCompilerRepository">Compiler repository</button></div></div></article></section>
+  </main>
+  <script nonce="${nonce}">
+    const vscode = acquireVsCodeApi();
+    const selectPage = (name) => { const valid = document.getElementById('page-' + name) ? name : 'overview'; document.querySelectorAll('.page').forEach((page) => page.classList.toggle('active', page.id === 'page-' + valid)); document.querySelectorAll('.nav button').forEach((button) => button.classList.toggle('active', button.dataset.page === valid)); vscode.setState({ page: valid }); window.scrollTo(0, 0); };
+    document.querySelectorAll('[data-page]').forEach((button) => button.addEventListener('click', () => selectPage(button.dataset.page)));
+    document.querySelectorAll('[data-page-link]').forEach((button) => button.addEventListener('click', () => selectPage(button.dataset.pageLink)));
+    document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => !button.disabled && vscode.postMessage({ type: button.dataset.action })));
+    document.querySelectorAll('[data-remove-uri]').forEach((button) => button.addEventListener('click', () => vscode.postMessage({ type: 'removeLanguageSpec', uri: button.dataset.removeUri })));
+    document.querySelectorAll('[data-setting]').forEach((control) => control.addEventListener('change', () => vscode.postMessage({ type: 'updateSetting', key: control.dataset.setting, value: control.type === 'checkbox' ? control.checked : control.value })));
+    selectPage(vscode.getState()?.page ?? 'overview');
+  </script>
+</body>
+</html>`;
 }
 
 function renderHomeHtml(options: HomeHtmlOptions): string {

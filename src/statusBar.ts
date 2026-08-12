@@ -19,6 +19,6 @@ export class NWScriptStatusBar implements vscode.Disposable {
   update(scope?: vscode.Uri): void {
     void scope;
     this.item.text = "$(search) NWScript Workbench: Auto";
-    this.item.tooltip = "Resolving nwscript.nss from the active script. Click to open the resolution preview.";
+    this.item.tooltip = "Resolving nwscript.nss from the active script. Click to open the resolution list.";
   }
 }
