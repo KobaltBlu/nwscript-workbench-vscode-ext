@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { CompilerService } from "./compilerService";
+import { CompilerLog } from "./compilerLog";
 import { getSettings } from "./config";
 import { CompilerDiagnostics } from "./diagnostics";
 import { ResourceResolver } from "./resourceResolver";
@@ -15,7 +16,8 @@ import { registerSidebar } from "./sidebar";
 export function activate(context: vscode.ExtensionContext): void {
   const resolver = new ResourceResolver();
   const diagnostics = new CompilerDiagnostics(resolver);
-  const compiler = new CompilerService(context, resolver, diagnostics);
+  const compilerLog = new CompilerLog();
+  const compiler = new CompilerService(context, resolver, diagnostics, compilerLog);
   const engineApi = new EngineApiService(compiler);
   const statusBar = new NWScriptStatusBar();
   const ncsEditor = new NcsEditorProvider(compiler);
@@ -38,6 +40,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     resolver,
     diagnostics,
+    compilerLog,
     compiler,
     engineApi,
     statusBar,
@@ -109,6 +112,10 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       },
     ),
+
+    vscode.commands.registerCommand("nwscript.showCompilerLog", () => {
+      compilerLog.show(false);
+    }),
 
     vscode.commands.registerCommand(
       "nwscript.disassembleNcs",

@@ -161,7 +161,7 @@ export class ResourceResolver implements vscode.Disposable {
     rootSource: string,
     addSource: (resRef: string, source: string) => void,
     maxResources: number,
-  ): Promise<UnresolvedInclude[]> {
+  ): Promise<IncludeResolution> {
     const resolution = await this.collectIncludes(
       rootUri,
       rootSource,
@@ -172,7 +172,7 @@ export class ResourceResolver implements vscode.Disposable {
       addSource(source.resRef, source.source);
     }
 
-    return resolution.unresolved;
+    return resolution;
   }
 
   async resolveKnownResRef(resRef: string): Promise<vscode.Uri | undefined> {

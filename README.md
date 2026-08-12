@@ -89,6 +89,7 @@ With this layout, scripts under `kotor1/` resolve against `kotor1/nwscript.nss`,
 - Recursive `#include` discovery and loading.
 - Configurable include search paths.
 - Compiler errors surfaced as VS Code diagnostics.
+- Compiler lifecycle logs in the **NWScript Compiler** Output channel (manual compile and compile-on-save).
 - Optional compile-on-save.
 - Optional NDB generation.
 - Configurable O0/O1/O2/O3 optimization level.
@@ -187,6 +188,8 @@ The generated VSIX contains the bundled extension JavaScript and compiler WASM. 
 ### NWScript Workbench: Compile Current File
 
 Compile the active or Explorer-selected `.nss` file.
+
+Compile progress, language-spec selection, include resolution, full error text, and output paths are written to **View → Output → NWScript Compiler**. Use **NWScript Workbench: Show Compiler Log** to open that channel, or click **Show Log** on the compile success/failure toast. Manual compiles also show a toast; compile-on-save logs quietly without focusing Output.
 
 The default output location is beside the source file:
 
@@ -326,6 +329,8 @@ k_test.nss(12): ERROR: DECLARATION DOES NOT MATCH PARAMETERS
 
 are converted into VS Code diagnostics and attached to the corresponding NSS file and line.
 
+The same compiler messages are appended to the **NWScript Compiler** Output channel so multi-line errors and compile-on-save runs remain inspectable after the toast disappears.
+
 The extension also pre-resolves `#include` resources before invoking the compiler. This makes the extension usable even with older `nwscript-wasm` builds whose native `FILE NOT FOUND` diagnostic does not identify the missing resref.
 
 ## Browser / virtual workspace considerations
@@ -377,6 +382,7 @@ CompilerService
         │
         ├── ResourceResolver
         ├── Diagnostics
+        ├── CompilerLog (Output → NWScript Compiler)
         └── @neverwinter/nwscript-wasm
                     │
                     ▼

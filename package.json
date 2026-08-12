@@ -47,6 +47,7 @@
     "onStartupFinished",
     "onLanguage:nwscript",
     "onCommand:nwscript.compileCurrentFile",
+    "onCommand:nwscript.showCompilerLog",
     "onCommand:nwscript.disassembleNcs",
     "onCustomEditor:nwscript.ncsHex"
   ],
@@ -131,6 +132,11 @@
         "command": "nwscript.compileCurrentFile",
         "title": "NWScript Workbench: Compile Current File",
         "icon": "$(play)"
+      },
+      {
+        "command": "nwscript.showCompilerLog",
+        "title": "NWScript Workbench: Show Compiler Log",
+        "icon": "$(output)"
       },
       {
         "command": "nwscript.disassembleNcs",

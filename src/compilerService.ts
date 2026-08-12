@@ -5,6 +5,7 @@ import {
 } from "@neverwinter/nwscript-wasm";
 import { compilerSettingsKey, getSettings } from "./config";
 import { CompilerDiagnostics } from "./diagnostics";
+import { CompilerLog } from "./compilerLog";
 import { ResourceResolver, type ResolvedSource } from "./resourceResolver";
 import {
   basename,
@@ -83,6 +84,7 @@ export class CompilerService implements vscode.Disposable {
     private readonly context: vscode.ExtensionContext,
     private readonly resolver: ResourceResolver,
     private readonly diagnostics: CompilerDiagnostics,
+    private readonly log: CompilerLog,
   ) {}
 
   dispose(): void {
@@ -166,43 +168,119 @@ export class CompilerService implements vscode.Disposable {
 
   async compileDocument(document: vscode.TextDocument, announce = true): Promise<NWScriptCompileResult> {
     return this.exclusive(async () => {
+      const started = Date.now();
       const source = document.getText();
       const settings = getSettings(document.uri);
-      const compiler = await this.getCompiler(document.uri);
-
-      // The identifier specification has already been parsed during create().
-      // Reset script/include resources so deleted or renamed includes cannot
-      // remain stale between compilations.
-      compiler.clearSources();
-
-      const unresolved = await this.resolver.preloadIncludes(
-        document.uri,
-        source,
-        (resRef, includeSource) => compiler.addSource(resRef, includeSource),
-        settings.maxResolveAttempts,
-      );
-
       const scriptName = basenameWithoutExtension(document.uri);
-      const rawResult = compiler.compile(scriptName, source);
-      const result = this.augmentMissingIncludeError(rawResult, unresolved.map((item) => item.resource));
+      const scriptPath = this.displayPath(document.uri, document.uri);
+      const outputDirectory = settings.outputDirectory.trim()
+        ? settings.outputDirectory.trim()
+        : "beside source";
 
-      if (!result.ok) {
-        await this.diagnostics.setCompilerError(document.uri, result.error);
-        if (announce) {
-          void vscode.window.showErrorMessage(`NWScript compile failed: ${this.firstErrorLine(result.error)}`);
+      this.log.section(`Compile ${scriptPath}`);
+      this.log.info(`Script: ${scriptName}.nss`);
+      this.log.info(`Optimization: ${settings.optimizationLevel}`);
+      this.log.info(`Generate NDB: ${settings.generateDebug ? "yes" : "no"}`);
+      this.log.info(`Output directory: ${outputDirectory}`);
+
+      try {
+        const specStatus = await this.getLanguageSpecStatus(document.uri);
+        if (specStatus.uri) {
+          this.log.info(`Language spec: ${specStatus.detail}`);
+        } else {
+          this.log.info(`Language spec: ${specStatus.label}`);
         }
+
+        const compiler = await this.getCompiler(document.uri);
+
+        // The identifier specification has already been parsed during create().
+        // Reset script/include resources so deleted or renamed includes cannot
+        // remain stale between compilations.
+        compiler.clearSources();
+
+        const includes = await this.resolver.preloadIncludes(
+          document.uri,
+          source,
+          (resRef, includeSource) => compiler.addSource(resRef, includeSource),
+          settings.maxResolveAttempts,
+        );
+
+        this.log.info(`Includes resolved: ${includes.sources.length}`);
+        if (includes.unresolved.length > 0) {
+          this.log.info(`Includes unresolved: ${includes.unresolved.length}`);
+          for (const missing of includes.unresolved) {
+            this.log.info(
+              `  missing ${missing.resource} (from ${this.displayPath(missing.from, document.uri)}:${missing.line})`,
+            );
+          }
+        }
+
+        const rawResult = compiler.compile(scriptName, source);
+        const result = this.augmentMissingIncludeError(
+          rawResult,
+          includes.unresolved.map((item) => item.resource),
+        );
+
+        if (!result.ok) {
+          await this.diagnostics.setCompilerError(document.uri, result.error);
+          this.log.error(`Compile failed (code ${result.code})`);
+          for (const line of result.error.split(/\r?\n/)) {
+            if (line.trim()) {
+              this.log.error(line);
+            }
+          }
+          this.log.info(`Finished in ${Date.now() - started} ms`);
+          if (announce) {
+            this.log.show(true);
+            this.announceCompile(
+              "error",
+              `NWScript compile failed: ${this.firstErrorLine(result.error)}`,
+            );
+          }
+          return result;
+        }
+
+        this.diagnostics.clear();
+        this.log.info(`Bytecode: ${result.bytecode.byteLength} bytes`);
+        const outputs = await this.writeOutputs(document.uri, result);
+        this.log.info(`Wrote ${outputs.ncs}`);
+        if (outputs.debug) {
+          this.log.info(`Wrote ${outputs.debug}`);
+        }
+        this.log.info(`Compile succeeded in ${Date.now() - started} ms`);
+
+        if (announce) {
+          const suffix = outputs.debug ? " + NDB" : "";
+          this.announceCompile(
+            "info",
+            `Compiled ${scriptName}.nss → ${outputs.ncs}${suffix}`,
+          );
+        }
+
         return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.log.error(message);
+        this.log.info(`Finished in ${Date.now() - started} ms`);
+        if (announce) {
+          this.log.show(true);
+        }
+        throw error;
       }
+    });
+  }
 
-      this.diagnostics.clear();
-      const outputs = await this.writeOutputs(document.uri, result);
+  private announceCompile(kind: "info" | "error", message: string): void {
+    const showLog = "Show Log";
+    const popup =
+      kind === "error"
+        ? vscode.window.showErrorMessage(message, showLog)
+        : vscode.window.showInformationMessage(message, showLog);
 
-      if (announce) {
-        const suffix = outputs.debug ? " + NDB" : "";
-        void vscode.window.showInformationMessage(`Compiled ${scriptName}.nss → ${outputs.ncs}${suffix}`);
+    void popup.then((action) => {
+      if (action === showLog) {
+        this.log.show(false);
       }
-
-      return result;
     });
   }
 
