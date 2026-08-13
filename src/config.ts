@@ -8,6 +8,17 @@ export interface NWScriptSettings {
   outputDirectory: string;
   compileOnSave: boolean;
   liveDiagnostics: boolean;
+  compileDependentsOnSave: boolean;
+  inlayHints: boolean;
+  semanticTokens: boolean;
+  formatting: boolean;
+  folding: boolean;
+  codeActions: boolean;
+  includeGraph: boolean;
+  actionCompat: boolean;
+  ncsReloadOnChange: boolean;
+  ncsActionSignatures: boolean;
+  ncsNdbOverlay: boolean;
   autoOpenHome: boolean;
   optimizationLevel: OptimizationLevel;
   optimizationFlags: number;
@@ -25,6 +36,17 @@ export function getSettings(scope?: vscode.Uri): NWScriptSettings {
     outputDirectory: config.get<string>("outputDirectory", "").trim(),
     compileOnSave: config.get<boolean>("compileOnSave", false),
     liveDiagnostics: config.get<boolean>("liveDiagnostics", true),
+    compileDependentsOnSave: config.get<boolean>("compileDependentsOnSave", true),
+    inlayHints: config.get<boolean>("inlayHints", true),
+    semanticTokens: config.get<boolean>("semanticTokens", true),
+    formatting: config.get<boolean>("formatting", true),
+    folding: config.get<boolean>("folding", true),
+    codeActions: config.get<boolean>("codeActions", true),
+    includeGraph: config.get<boolean>("includeGraph", true),
+    actionCompat: config.get<boolean>("actionCompat", true),
+    ncsReloadOnChange: config.get<boolean>("ncsReloadOnChange", true),
+    ncsActionSignatures: config.get<boolean>("ncsActionSignatures", true),
+    ncsNdbOverlay: config.get<boolean>("ncsNdbOverlay", true),
     autoOpenHome: config.get<boolean>("autoOpenHome", true),
     optimizationLevel,
     optimizationFlags: OptimizationFlags[optimizationLevel],

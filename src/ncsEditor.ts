@@ -1,6 +1,7 @@
 import type { NcsInspection, NdbInspection } from "@neverwinter/nwscript-wasm";
 import * as vscode from "vscode";
 import { buildWorkspaceActionCompat, type ActionCompatStatus } from "./actionCompat";
+import { getSettings } from "./config";
 import { CompilerService } from "./compilerService";
 import { EngineApiService } from "./engineApi";
 import {
@@ -139,7 +140,7 @@ export class NcsEditorProvider
     const ndbWatcher = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(folder, `${stem}.ndb`),
     );
-    const reload = async (): Promise<void> => {
+    const pushPayload = async (): Promise<void> => {
       const next = await this.loadPayload(document.uri);
       if (!next) return;
       await webviewPanel.webview.postMessage({
@@ -154,14 +155,30 @@ export class NcsEditorProvider
       });
     };
 
+    const reloadFromDisk = (): void => {
+      if (!getSettings(document.uri).ncsReloadOnChange) {
+        return;
+      }
+      void pushPayload();
+    };
+
     const subscriptions = [
       watcher,
       ndbWatcher,
-      watcher.onDidChange(() => void reload()),
-      watcher.onDidCreate(() => void reload()),
-      ndbWatcher.onDidChange(() => void reload()),
-      ndbWatcher.onDidCreate(() => void reload()),
-      ndbWatcher.onDidDelete(() => void reload()),
+      watcher.onDidChange(reloadFromDisk),
+      watcher.onDidCreate(reloadFromDisk),
+      ndbWatcher.onDidChange(reloadFromDisk),
+      ndbWatcher.onDidCreate(reloadFromDisk),
+      ndbWatcher.onDidDelete(reloadFromDisk),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (
+          event.affectsConfiguration("nwscript.ncsActionSignatures", document.uri) ||
+          event.affectsConfiguration("nwscript.ncsNdbOverlay", document.uri) ||
+          event.affectsConfiguration("nwscript.actionCompat", document.uri)
+        ) {
+          void pushPayload();
+        }
+      }),
       webviewPanel.webview.onDidReceiveMessage(async (message) => {
         if (message?.type === "copy" && typeof message.text === "string") {
           await vscode.env.clipboard.writeText(message.text);
@@ -301,6 +318,9 @@ export class NcsEditorProvider
   }
 
   private async loadActions(uri: vscode.Uri): Promise<NcsActionInfo[]> {
+    if (!getSettings(uri).ncsActionSignatures) {
+      return [];
+    }
     try {
       const model = await this.engineApi.getModelForUri(uri);
       return (model?.functions ?? [])
@@ -317,6 +337,9 @@ export class NcsEditorProvider
   }
 
   private async loadCompat(uri: vscode.Uri): Promise<Record<number, ActionCompatStatus>> {
+    if (!getSettings(uri).actionCompat) {
+      return {};
+    }
     try {
       const report = await buildWorkspaceActionCompat(this.compiler, uri);
       return report.byActionId;
@@ -326,6 +349,9 @@ export class NcsEditorProvider
   }
 
   private async loadNdb(uri: vscode.Uri): Promise<NdbInspection | undefined> {
+    if (!getSettings(uri).ncsNdbOverlay) {
+      return undefined;
+    }
     const ndbUri = uri.with({ path: `${uri.path.slice(0, uri.path.length - 4)}.ndb` });
     try {
       return await this.compiler.inspectNdb(ndbUri);

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { getSettings } from "./config";
 import { EngineApiService } from "./engineApi";
 
 const legend = new vscode.SemanticTokensLegend(
@@ -12,23 +13,40 @@ export function registerSemanticTokens(
   context: vscode.ExtensionContext,
   engineApi: EngineApiService,
 ): void {
+  const provider = new NWScriptSemanticTokensProvider(engineApi);
   context.subscriptions.push(
-    vscode.languages.registerDocumentSemanticTokensProvider(
-      SELECTOR,
-      new NWScriptSemanticTokensProvider(engineApi),
-      legend,
-    ),
+    provider,
+    vscode.languages.registerDocumentSemanticTokensProvider(SELECTOR, provider, legend),
   );
 }
 
-class NWScriptSemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
-  constructor(private readonly engineApi: EngineApiService) {}
+class NWScriptSemanticTokensProvider implements vscode.DocumentSemanticTokensProvider, vscode.Disposable {
+  private readonly changeEmitter = new vscode.EventEmitter<void>();
+  private readonly configChange: vscode.Disposable;
+
+  readonly onDidChangeSemanticTokens = this.changeEmitter.event;
+
+  constructor(private readonly engineApi: EngineApiService) {
+    this.configChange = vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("nwscript.semanticTokens")) {
+        this.changeEmitter.fire();
+      }
+    });
+  }
+
+  dispose(): void {
+    this.configChange.dispose();
+    this.changeEmitter.dispose();
+  }
 
   async provideDocumentSemanticTokens(
     document: vscode.TextDocument,
   ): Promise<vscode.SemanticTokens> {
-    const model = await this.engineApi.getModel(document).catch(() => undefined);
     const builder = new vscode.SemanticTokensBuilder(legend);
+    if (!getSettings(document.uri).semanticTokens) {
+      return builder.build();
+    }
+    const model = await this.engineApi.getModel(document).catch(() => undefined);
     if (!model) {
       return builder.build();
     }

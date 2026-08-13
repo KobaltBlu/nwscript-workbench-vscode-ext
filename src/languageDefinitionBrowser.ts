@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { getSettings } from "./config";
 import { diffActionSignatures } from "./actionCompat";
 import type { CompilerService } from "./compilerService";
 import { parseEngineApi } from "./engineApi";
@@ -149,23 +150,25 @@ export class LanguageDefinitionBrowser implements vscode.Disposable {
     await this.panel?.webview.postMessage({ type: "loadingPreview", path: entry.definitionPath });
     const source = await this.getSource(entry);
     let compat = "";
-    try {
-      const workspaceSource = await this.compiler.getLanguageSpecSource();
-      if (workspaceSource?.text) {
-        const catalogFunctions = parseEngineApi({
-          kind: "detected",
-          label: entry.name ?? entry.id ?? entry.definitionPath,
-          availability: "catalog",
-          cacheKey: entry.definitionPath,
-          text: source,
-        }).functions;
-        compat = diffActionSignatures(parseEngineApi(workspaceSource).functions, [{
-          label: entry.name ?? entry.id ?? "catalog definition",
-          functions: catalogFunctions,
-        }]).summary;
+    if (getSettings().actionCompat) {
+      try {
+        const workspaceSource = await this.compiler.getLanguageSpecSource();
+        if (workspaceSource?.text) {
+          const catalogFunctions = parseEngineApi({
+            kind: "detected",
+            label: entry.name ?? entry.id ?? entry.definitionPath,
+            availability: "catalog",
+            cacheKey: entry.definitionPath,
+            text: source,
+          }).functions;
+          compat = diffActionSignatures(parseEngineApi(workspaceSource).functions, [{
+            label: entry.name ?? entry.id ?? "catalog definition",
+            functions: catalogFunctions,
+          }]).summary;
+        }
+      } catch {
+        compat = "";
       }
-    } catch {
-      compat = "";
     }
     await this.panel?.webview.postMessage({
       type: "preview",

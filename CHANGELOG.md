@@ -17,6 +17,11 @@
 - Home shows the active script’s include graph (includes and included-by)
 - **Open Compiled NCS** uses `nwscript.outputDirectory` when set (same path as NDB peek)
 
+### Settings
+
+- New 0.1.5 / 0.1.6 features are toggles under `nwscript.*` (defaults match previous always-on behavior): live editor extras, include graph, ACTION compatibility, and NCS reload / signatures / NDB overlay
+- compile dependents now defaults to off
+
 ## 0.1.5
 
 ### NCS Inspector

@@ -303,6 +303,72 @@
           "description": "Background-compile the active NSS buffer while typing. Does not write NCS or NDB.",
           "scope": "resource"
         },
+        "nwscript.compileDependentsOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "When compile-on-save is enabled, recompile entry scripts that include a saved include file.",
+          "scope": "resource"
+        },
+        "nwscript.inlayHints": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show parameter name inlay hints on NWScript function and ACTION calls.",
+          "scope": "resource"
+        },
+        "nwscript.semanticTokens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Overlay semantic highlighting for engine, include, and script symbols.",
+          "scope": "resource"
+        },
+        "nwscript.formatting": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the conservative NWScript document formatter (brace indent).",
+          "scope": "resource"
+        },
+        "nwscript.folding": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable brace and grouped #include folding ranges.",
+          "scope": "resource"
+        },
+        "nwscript.codeActions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable NWScript quick fixes (add include, create missing include, StartingConditional, language definition).",
+          "scope": "resource"
+        },
+        "nwscript.includeGraph": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the active script's include graph on Workbench Home.",
+          "scope": "window"
+        },
+        "nwscript.actionCompat": {
+          "type": "boolean",
+          "default": true,
+          "description": "Compare ACTION signatures across workspace language specs on Home, the Language Definition Browser, and NCS Inspector details.",
+          "scope": "window"
+        },
+        "nwscript.ncsReloadOnChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reload the NCS Inspector when the open .ncs or sibling .ndb file changes on disk.",
+          "scope": "resource"
+        },
+        "nwscript.ncsActionSignatures": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Engine API ACTION names and signatures in the NCS Inspector.",
+          "scope": "resource"
+        },
+        "nwscript.ncsNdbOverlay": {
+          "type": "boolean",
+          "default": true,
+          "description": "Overlay sibling .ndb source mapping in the NCS Inspector when debug data is present.",
+          "scope": "resource"
+        },
         "nwscript.autoOpenHome": {
           "type": "boolean",
           "default": true,

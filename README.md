@@ -304,7 +304,7 @@ A workspace-relative output directory can be configured:
 }
 ```
 
-Compiles an NSS document after it is saved. Saving an include recompiles entry scripts that depend on it.
+Compiles an NSS document after it is saved. Saving an include recompiles entry scripts that depend on it when `nwscript.compileDependentsOnSave` is on.
 
 ### `nwscript.liveDiagnostics`
 
@@ -315,6 +315,40 @@ Compiles an NSS document after it is saved. Saving an include recompiles entry s
 ```
 
 Background-compiles the active NSS buffer while typing. Diagnostics update without writing `.ncs` or `.ndb`. Turn off if the exclusive WASM queue feels busy.
+
+### `nwscript.compileDependentsOnSave`
+
+```json
+{
+  "nwscript.compileDependentsOnSave": true
+}
+```
+
+When compile-on-save is enabled, saving an include recompiles entry scripts that `#include` it.
+
+### Editor extras
+
+All default to `true`. Turn them off in Settings or on Workbench Home.
+
+| Setting | Effect |
+| --- | --- |
+| `nwscript.inlayHints` | Parameter names on function and ACTION calls |
+| `nwscript.semanticTokens` | Engine / include / script symbol overlay |
+| `nwscript.formatting` | Conservative brace-indent formatter |
+| `nwscript.folding` | Brace and grouped `#include` folding |
+| `nwscript.codeActions` | Quick fixes (add include, StartingConditional, language definition) |
+| `nwscript.includeGraph` | Include graph on Workbench Home |
+| `nwscript.actionCompat` | ACTION signature comparison on Home, Language Definition Browser, and NCS Inspector |
+
+### NCS Inspector
+
+All default to `true`.
+
+| Setting | Effect |
+| --- | --- |
+| `nwscript.ncsReloadOnChange` | Reload when the open `.ncs` or sibling `.ndb` changes |
+| `nwscript.ncsActionSignatures` | Engine API ACTION names and signatures |
+| `nwscript.ncsNdbOverlay` | Sibling `.ndb` source mapping |
 
 ### `nwscript.autoOpenHome`
 

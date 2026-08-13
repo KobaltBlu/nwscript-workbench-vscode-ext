@@ -1,23 +1,26 @@
 import * as vscode from "vscode";
+import { getSettings } from "./config";
 
 const SELECTOR: vscode.DocumentSelector = [{ language: "nwscript" }];
 const INDENT = "  ";
 
 export function registerFormatting(context: vscode.ExtensionContext): void {
+  const folding = new NWScriptFoldingProvider();
   context.subscriptions.push(
+    folding,
     vscode.languages.registerDocumentFormattingEditProvider(
       SELECTOR,
       new NWScriptFormattingProvider(),
     ),
-    vscode.languages.registerFoldingRangeProvider(
-      SELECTOR,
-      new NWScriptFoldingProvider(),
-    ),
+    vscode.languages.registerFoldingRangeProvider(SELECTOR, folding),
   );
 }
 
 class NWScriptFormattingProvider implements vscode.DocumentFormattingEditProvider {
   provideDocumentFormattingEdits(document: vscode.TextDocument): vscode.TextEdit[] {
+    if (!getSettings(document.uri).formatting) {
+      return [];
+    }
     const original = document.getText();
     const formatted = formatNss(original);
     if (formatted === original) {
@@ -28,8 +31,29 @@ class NWScriptFormattingProvider implements vscode.DocumentFormattingEditProvide
   }
 }
 
-class NWScriptFoldingProvider implements vscode.FoldingRangeProvider {
+class NWScriptFoldingProvider implements vscode.FoldingRangeProvider, vscode.Disposable {
+  private readonly changeEmitter = new vscode.EventEmitter<void>();
+  private readonly configChange: vscode.Disposable;
+
+  readonly onDidChangeFoldingRanges = this.changeEmitter.event;
+
+  constructor() {
+    this.configChange = vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("nwscript.folding")) {
+        this.changeEmitter.fire();
+      }
+    });
+  }
+
+  dispose(): void {
+    this.configChange.dispose();
+    this.changeEmitter.dispose();
+  }
+
   provideFoldingRanges(document: vscode.TextDocument): vscode.FoldingRange[] {
+    if (!getSettings(document.uri).folding) {
+      return [];
+    }
     return foldNss(document.getText());
   }
 }

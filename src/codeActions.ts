@@ -47,6 +47,9 @@ class NWScriptCodeActionProvider implements vscode.CodeActionProvider {
     range: vscode.Range,
     context: vscode.CodeActionContext,
   ): Promise<vscode.CodeAction[]> {
+    if (!getSettings(document.uri).codeActions) {
+      return [];
+    }
     const actions: vscode.CodeAction[] = [];
 
     for (const diagnostic of context.diagnostics) {

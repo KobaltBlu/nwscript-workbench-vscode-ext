@@ -276,7 +276,7 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         if (isEntryScriptSource(document.getText())) {
           await compiler.compileDocument(document, { announce: false });
-        } else {
+        } else if (getSettings(document.uri).compileDependentsOnSave) {
           await compileDirtyDependents(compiler, includeGraph, document);
         }
       } catch (error) {

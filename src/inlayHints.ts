@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { scanCallSites, skipTrivia } from "./callSites";
+import { getSettings } from "./config";
 import { EngineApiService } from "./engineApi";
 
 const SELECTOR: vscode.DocumentSelector = [{ language: "nwscript" }];
@@ -8,22 +9,40 @@ export function registerInlayHints(
   context: vscode.ExtensionContext,
   engineApi: EngineApiService,
 ): void {
+  const provider = new NWScriptInlayHintsProvider(engineApi);
   context.subscriptions.push(
-    vscode.languages.registerInlayHintsProvider(
-      SELECTOR,
-      new NWScriptInlayHintsProvider(engineApi),
-    ),
+    provider,
+    vscode.languages.registerInlayHintsProvider(SELECTOR, provider),
   );
 }
 
-class NWScriptInlayHintsProvider implements vscode.InlayHintsProvider {
-  constructor(private readonly engineApi: EngineApiService) {}
+class NWScriptInlayHintsProvider implements vscode.InlayHintsProvider, vscode.Disposable {
+  private readonly changeEmitter = new vscode.EventEmitter<void>();
+  private readonly configChange: vscode.Disposable;
+
+  readonly onDidChangeInlayHints = this.changeEmitter.event;
+
+  constructor(private readonly engineApi: EngineApiService) {
+    this.configChange = vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("nwscript.inlayHints")) {
+        this.changeEmitter.fire();
+      }
+    });
+  }
+
+  dispose(): void {
+    this.configChange.dispose();
+    this.changeEmitter.dispose();
+  }
 
   async provideInlayHints(
     document: vscode.TextDocument,
     range: vscode.Range,
     token: vscode.CancellationToken,
   ): Promise<vscode.InlayHint[]> {
+    if (!getSettings(document.uri).inlayHints) {
+      return [];
+    }
     const model = await this.engineApi.getModel(document).catch(() => undefined);
     if (!model || token.isCancellationRequested) {
       return [];

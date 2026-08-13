@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { buildWorkspaceActionCompat } from "./actionCompat";
 import { CompilerService, type LanguageSpecResolutionEntry, type LanguageSpecStatus } from "./compilerService";
-import { getSettings, type OptimizationLevel } from "./config";
+import { getSettings, type NWScriptSettings, type OptimizationLevel } from "./config";
 import { IncludeGraph, type IncludeGraphView } from "./includeGraph";
 import { basename, toWorkspacePathOrUri, workspaceFolderFor } from "./uri";
 
@@ -92,14 +92,16 @@ export class NWScriptHomePanel implements vscode.Disposable {
     const resolutionPreview = await buildResolutionPreview(this.compiler, this.scope);
     const specStatus = resolutionPreview.status;
     let actionCompatSummary = "";
-    try {
-      actionCompatSummary = (await buildWorkspaceActionCompat(this.compiler, this.scope)).summary;
-    } catch {
-      actionCompatSummary = "";
+    if (settings.actionCompat) {
+      try {
+        actionCompatSummary = (await buildWorkspaceActionCompat(this.compiler, this.scope)).summary;
+      } catch {
+        actionCompatSummary = "";
+      }
     }
 
     let includeGraph: IncludeGraphView | undefined;
-    if (this.scope?.path.toLowerCase().endsWith(".nss")) {
+    if (settings.includeGraph && this.scope?.path.toLowerCase().endsWith(".nss")) {
       try {
         includeGraph = await this.includeGraph.viewFor(this.scope);
       } catch {
@@ -125,6 +127,7 @@ export class NWScriptHomePanel implements vscode.Disposable {
       resolutionPreview,
       actionCompatSummary,
       includeGraph,
+      settings,
       compileOnSave: settings.compileOnSave,
       liveDiagnostics: settings.liveDiagnostics,
       autoOpenHome: settings.autoOpenHome,
@@ -260,16 +263,23 @@ export class NWScriptHomePanel implements vscode.Disposable {
     switch (key) {
       case "compileOnSave":
       case "liveDiagnostics":
+      case "compileDependentsOnSave":
+      case "inlayHints":
+      case "semanticTokens":
+      case "formatting":
+      case "folding":
+      case "codeActions":
+      case "includeGraph":
+      case "actionCompat":
+      case "ncsReloadOnChange":
+      case "ncsActionSignatures":
+      case "ncsNdbOverlay":
       case "generateDebug":
       case "autoOpenHome":
         if (typeof value !== "boolean") {
           throw new TypeError(`${key} expects a boolean value.`);
         }
-        await config.update(
-          key,
-          value,
-          key === "autoOpenHome" ? vscode.ConfigurationTarget.Global : target,
-        );
+        await config.update(key, value, settingTarget(key, scope));
         break;
 
       case "optimizationLevel":
@@ -321,6 +331,17 @@ export class NWScriptHomePanel implements vscode.Disposable {
 const EDITABLE_SETTINGS = new Set([
   "compileOnSave",
   "liveDiagnostics",
+  "compileDependentsOnSave",
+  "inlayHints",
+  "semanticTokens",
+  "formatting",
+  "folding",
+  "codeActions",
+  "includeGraph",
+  "actionCompat",
+  "ncsReloadOnChange",
+  "ncsActionSignatures",
+  "ncsNdbOverlay",
   "generateDebug",
   "optimizationLevel",
   "autoOpenHome",
@@ -343,6 +364,16 @@ function configurationTarget(scope?: vscode.Uri): vscode.ConfigurationTarget {
     : vscode.ConfigurationTarget.Workspace;
 }
 
+function settingTarget(key: string, scope?: vscode.Uri): vscode.ConfigurationTarget {
+  if (key === "autoOpenHome") {
+    return vscode.ConfigurationTarget.Global;
+  }
+  if (key === "includeGraph" || key === "actionCompat") {
+    return vscode.ConfigurationTarget.Workspace;
+  }
+  return configurationTarget(scope);
+}
+
 function isOptimizationLevel(value: unknown): value is OptimizationLevel {
   return value === "O0" || value === "O1" || value === "O2" || value === "O3";
 }
@@ -356,6 +387,7 @@ interface HomeHtmlOptions {
   resolutionPreview: ResolutionPreview;
   actionCompatSummary: string;
   includeGraph?: IncludeGraphView;
+  settings: NWScriptSettings;
   compileOnSave: boolean;
   liveDiagnostics: boolean;
   autoOpenHome: boolean;
@@ -376,7 +408,14 @@ interface ResolutionPreview {
   entries: LanguageSpecResolutionEntry[];
 }
 
-function renderIncludeGraph(graph: IncludeGraphView | undefined): string {
+function renderToggle(key: string, title: string, description: string, checked: boolean, heading: "h2" | "h3" = "h2"): string {
+  return `<div class="setting-row"><div><${heading}>${escapeHtml(title)}</${heading}><p>${escapeHtml(description)}</p></div><label class="toggle"><input type="checkbox" aria-label="${escapeHtml(title)}" data-setting="${escapeHtml(key)}" ${checked ? "checked" : ""}><span></span></label></div>`;
+}
+
+function renderIncludeGraph(graph: IncludeGraphView | undefined, enabled: boolean): string {
+  if (!enabled) {
+    return `<p class="muted">Include graph is turned off in Settings.</p>`;
+  }
   if (!graph) {
     return `<p class="muted">Includes and dependents appear here for the active script.</p>`;
   }
@@ -611,25 +650,37 @@ function renderWorkbenchHomeHtml(options: HomeHtmlOptions): string {
         </div>
         <aside class="stack">
           <article class="panel"><div class="panel-body"><div class="panel-head"><div><h2>Compiler</h2><p>Workspace settings.</p></div></div><div class="setting-rows">
-            <div class="setting-row"><div><h3>Compile on save</h3><p>Build NSS whenever it is saved.</p></div><label class="toggle"><input type="checkbox" aria-label="Compile on save" data-setting="compileOnSave" ${options.compileOnSave ? "checked" : ""}><span></span></label></div>
-            <div class="setting-row"><div><h3>Live diagnostics</h3><p>Compile the active buffer while typing (does not write NCS).</p></div><label class="toggle"><input type="checkbox" aria-label="Live diagnostics" data-setting="liveDiagnostics" ${options.liveDiagnostics ? "checked" : ""}><span></span></label></div>
-            <div class="setting-row"><div><h3>Open Home on first run</h3><p>Waits for a workspace, then opens Home once. Opt out to skip.</p></div><label class="toggle"><input type="checkbox" aria-label="Open Home on first run" data-setting="autoOpenHome" ${options.autoOpenHome ? "checked" : ""}><span></span></label></div>
+            ${renderToggle("compileOnSave", "Compile on save", "Build NSS whenever it is saved.", options.compileOnSave, "h3")}
+            ${renderToggle("compileDependentsOnSave", "Compile dependents", "Recompile entry scripts that include a saved include file.", options.settings.compileDependentsOnSave, "h3")}
+            ${renderToggle("liveDiagnostics", "Live diagnostics", "Compile the active buffer while typing (does not write NCS).", options.liveDiagnostics, "h3")}
+            ${renderToggle("autoOpenHome", "Open Home on first run", "Waits for a workspace, then opens Home once. Opt out to skip.", options.autoOpenHome, "h3")}
             <div class="setting-row"><div><h3>Optimization</h3><p>Compiler optimization preset.</p></div><select aria-label="Optimization level" data-setting="optimizationLevel">${["O0", "O1", "O2", "O3"].map((level) => `<option value="${level}" ${level === options.optimizationLevel ? "selected" : ""}>${level}</option>`).join("")}</select></div>
-            <div class="setting-row"><div><h3>Generate NDB</h3><p>Write debugger metadata.</p></div><label class="toggle"><input type="checkbox" aria-label="Generate NDB" data-setting="generateDebug" ${options.generateDebug ? "checked" : ""}><span></span></label></div>
+            ${renderToggle("generateDebug", "Generate NDB", "Write debugger metadata.", options.generateDebug, "h3")}
           </div></div><div class="panel-footer"><span>More controls are available in VS Code Settings.</span><button class="button secondary" data-action="openSettings">Open settings</button></div></article>
-          <article class="panel"><div class="panel-body"><div class="panel-head"><div><h2>Include graph</h2><p>${options.includeGraph ? escapeHtml(options.includeGraph.script) : "Open an NSS file to inspect includes."}</p></div></div>${renderIncludeGraph(options.includeGraph)}</div></article>
+          <article class="panel"><div class="panel-body"><div class="panel-head"><div><h2>Include graph</h2><p>${!options.settings.includeGraph ? "Disabled in Settings." : options.includeGraph ? escapeHtml(options.includeGraph.script) : "Open an NSS file to inspect includes."}</p></div></div>${renderIncludeGraph(options.includeGraph, options.settings.includeGraph)}</div></article>
           <article class="panel"><div class="panel-body"><div class="panel-head"><div><h2>Resolved values</h2></div></div><div class="facts"><div class="fact"><span>Workspace</span><strong>${escapeHtml(options.workspaceName)}</strong></div><div class="fact"><span>Output</span><strong>${outputSummary}</strong></div><div class="fact"><span>Include depth</span><strong>${options.maxIncludeDepth}</strong></div><div class="fact"><span>Resolve attempts</span><strong>${options.maxResolveAttempts}</strong></div></div></div></article>
         </aside>
       </div>
     </section>
     <section id="page-settings" class="page">
-      <div class="section-title"><div class="eyebrow">Workspace</div><h1>Compiler settings</h1><p>Common options are editable here. Paths and limits are available in VS Code Settings.</p></div>
+      <div class="section-title"><div class="eyebrow">Workspace</div><h1>Workbench settings</h1><p>Common options are editable here. Paths and limits are available in VS Code Settings.</p></div>
       <div class="settings-layout"><article class="panel"><div class="panel-body"><div class="setting-rows">
-        <div class="setting-row"><div><h2>Compile on save</h2><p>Compile NWScript files automatically whenever they are saved.</p></div><label class="toggle"><input type="checkbox" aria-label="Compile on save" data-setting="compileOnSave" ${options.compileOnSave ? "checked" : ""}><span></span></label></div>
-        <div class="setting-row"><div><h2>Live diagnostics</h2><p>Background-compile the active NSS buffer without writing bytecode.</p></div><label class="toggle"><input type="checkbox" aria-label="Live diagnostics" data-setting="liveDiagnostics" ${options.liveDiagnostics ? "checked" : ""}><span></span></label></div>
-        <div class="setting-row"><div><h2>Open Home on first run</h2><p>Automatically open Home the first time a workspace is available after the extension activates. Turn this off to opt out.</p></div><label class="toggle"><input type="checkbox" aria-label="Open Home on first run" data-setting="autoOpenHome" ${options.autoOpenHome ? "checked" : ""}><span></span></label></div>
+        ${renderToggle("compileOnSave", "Compile on save", "Compile NWScript files automatically whenever they are saved.", options.settings.compileOnSave)}
+        ${renderToggle("liveDiagnostics", "Live diagnostics", "Background-compile the active NSS buffer without writing bytecode.", options.settings.liveDiagnostics)}
+        ${renderToggle("compileDependentsOnSave", "Compile dependents on save", "When compile-on-save is on, recompile entry scripts that include a saved include file.", options.settings.compileDependentsOnSave)}
+        ${renderToggle("inlayHints", "Inlay hints", "Show parameter names on function and ACTION calls.", options.settings.inlayHints)}
+        ${renderToggle("semanticTokens", "Semantic highlighting", "Overlay engine, include, and script symbol colors.", options.settings.semanticTokens)}
+        ${renderToggle("formatting", "Formatter", "Enable the conservative brace-indent document formatter.", options.settings.formatting)}
+        ${renderToggle("folding", "Folding", "Enable brace and grouped #include folding ranges.", options.settings.folding)}
+        ${renderToggle("codeActions", "Code actions", "Enable quick fixes such as add include and StartingConditional.", options.settings.codeActions)}
+        ${renderToggle("includeGraph", "Include graph", "Show the active script's includes and dependents on Home.", options.settings.includeGraph)}
+        ${renderToggle("actionCompat", "ACTION compatibility", "Compare ACTION signatures across language specs on Home, the Language Definition Browser, and NCS Inspector.", options.settings.actionCompat)}
+        ${renderToggle("ncsReloadOnChange", "NCS reload on change", "Reload the NCS Inspector when the open .ncs or sibling .ndb changes on disk.", options.settings.ncsReloadOnChange)}
+        ${renderToggle("ncsActionSignatures", "NCS ACTION signatures", "Show Engine API ACTION names and signatures in the NCS Inspector.", options.settings.ncsActionSignatures)}
+        ${renderToggle("ncsNdbOverlay", "NCS NDB overlay", "Overlay sibling .ndb source mapping in the NCS Inspector.", options.settings.ncsNdbOverlay)}
+        ${renderToggle("autoOpenHome", "Open Home on first run", "Automatically open Home the first time a workspace is available after the extension activates. Turn this off to opt out.", options.settings.autoOpenHome)}
         <div class="setting-row"><div><h2>Optimization level</h2><p>Select the optimization preset passed to the WebAssembly compiler.</p></div><select aria-label="Optimization level" data-setting="optimizationLevel">${["O0", "O1", "O2", "O3"].map((level) => `<option value="${level}" ${level === options.optimizationLevel ? "selected" : ""}>${level}</option>`).join("")}</select></div>
-        <div class="setting-row"><div><h2>Generate NDB output</h2><p>Emit debugger metadata alongside successful NCS output.</p></div><label class="toggle"><input type="checkbox" aria-label="Generate NDB output" data-setting="generateDebug" ${options.generateDebug ? "checked" : ""}><span></span></label></div>
+        ${renderToggle("generateDebug", "Generate NDB output", "Emit debugger metadata alongside successful NCS output.", options.settings.generateDebug)}
       </div></div></article><aside class="stack"><article class="panel"><div class="panel-body"><div class="panel-head"><div><h2>Resolved configuration</h2><p>Read-only summary of advanced settings.</p></div></div><div class="facts"><div class="fact"><span>Include paths</span><strong>${includeSummary}</strong></div><div class="fact"><span>Output directory</span><strong>${outputSummary}</strong></div><div class="fact"><span>Max include depth</span><strong>${options.maxIncludeDepth}</strong></div><div class="fact"><span>Max resolve attempts</span><strong>${options.maxResolveAttempts}</strong></div></div></div><div class="panel-footer"><span>Edit paths and limits in VS Code Settings.</span><button class="button" data-action="openSettings">Advanced settings</button></div></article></aside></div>
     </section>
     <section id="page-guide" class="page">
