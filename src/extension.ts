@@ -49,6 +49,9 @@ export function activate(context: vscode.ExtensionContext): void {
     languageDefinitionBrowser,
     home,
     registerSidebar(context, async () => {
+      if (!hasWorkspaceFolder()) {
+        return;
+      }
       await home.open(vscode.window.activeTextEditor?.document.uri);
     }),
   );
@@ -166,6 +169,27 @@ export function activate(context: vscode.ExtensionContext): void {
   void showHomeOnFirstRun(context, home);
 }
 
+function hasWorkspaceFolder(): boolean {
+  return (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
+}
+
+function whenWorkspaceReady(context: vscode.ExtensionContext): Promise<void> {
+  if (hasWorkspaceFolder()) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    const subscription = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      if (!hasWorkspaceFolder()) {
+        return;
+      }
+      subscription.dispose();
+      resolve();
+    });
+    context.subscriptions.push(subscription);
+  });
+}
+
 async function showHomeOnFirstRun(
   context: vscode.ExtensionContext,
   home: NWScriptHomePanel,
@@ -175,10 +199,18 @@ async function showHomeOnFirstRun(
     return;
   }
 
-  await context.globalState.update(key, true);
   if (!getSettings().autoOpenHome) {
+    await context.globalState.update(key, true);
     return;
   }
+
+  await whenWorkspaceReady(context);
+
+  if (context.globalState.get<boolean>(key, false) || !getSettings().autoOpenHome) {
+    return;
+  }
+
+  await context.globalState.update(key, true);
   await home.open(vscode.window.activeTextEditor?.document.uri);
 }
 

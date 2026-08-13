@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { basename, dirname, workspaceFolderFor } from "./uri";
+import { basename, workspaceFolderFor, writeFileCreatingParents } from "./uri";
 
 const REPOSITORY = "KOTORCommunityPatches/Vanilla_KOTOR_Script_Source";
 const BRANCH = "master";
@@ -231,8 +231,7 @@ export class ScriptBrowser implements vscode.Disposable {
     if (!target) return;
 
     const source = await this.getSource(entry);
-    await vscode.workspace.fs.createDirectory(dirname(target));
-    await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(source));
+    await writeFileCreatingParents(target, new TextEncoder().encode(source));
     const action = await vscode.window.showInformationMessage(
       `Downloaded ${basename(target)}.`,
       "Open",

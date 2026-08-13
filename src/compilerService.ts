@@ -11,6 +11,7 @@ import {
   basename,
   basenameWithoutExtension,
   dirname,
+  ensureDirectory,
   resolveWorkspaceUri,
   workspaceFolderFor,
 } from "./uri";
@@ -897,7 +898,7 @@ export class CompilerService implements vscode.Disposable {
 
     if (settings.outputDirectory) {
       outputBase = resolveWorkspaceUri(settings.outputDirectory, sourceUri) ?? dirname(sourceUri);
-      await vscode.workspace.fs.createDirectory(outputBase);
+      await ensureDirectory(outputBase);
     } else {
       outputBase = dirname(sourceUri);
     }

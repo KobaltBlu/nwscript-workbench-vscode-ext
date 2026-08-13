@@ -94,3 +94,88 @@ export async function exists(uri: vscode.Uri): Promise<boolean> {
     return false;
   }
 }
+
+export function sameUri(a: vscode.Uri, b: vscode.Uri): boolean {
+  return (
+    a.scheme === b.scheme &&
+    a.authority === b.authority &&
+    a.path.replace(/\/+$/, "") === b.path.replace(/\/+$/, "")
+  );
+}
+
+/**
+ * Create a directory and any missing parents, without touching the workspace
+ * or filesystem root. vscode.dev's File System Access provider throws
+ * "No file system handle registered (\)" if createDirectory is called on the
+ * registered folder root.
+ */
+export async function ensureDirectory(uri: vscode.Uri): Promise<void> {
+  if (isFilesystemRoot(uri)) {
+    return;
+  }
+
+  const folder = vscode.workspace.getWorkspaceFolder(uri) ?? workspaceFolderFor(uri);
+  if (folder && sameUri(uri, folder.uri)) {
+    return;
+  }
+
+  try {
+    const stat = await vscode.workspace.fs.stat(uri);
+    if ((stat.type & vscode.FileType.Directory) !== 0) {
+      return;
+    }
+    throw new Error(`${uri.toString(true)} exists and is not a directory.`);
+  } catch (error) {
+    if (!isMissingFileError(error)) {
+      throw error;
+    }
+  }
+
+  const parent = dirname(uri);
+  if (!sameUri(parent, uri)) {
+    await ensureDirectory(parent);
+  }
+
+  try {
+    await vscode.workspace.fs.createDirectory(uri);
+  } catch (error) {
+    if (isMissingHandleError(error)) {
+      return;
+    }
+    try {
+      const stat = await vscode.workspace.fs.stat(uri);
+      if ((stat.type & vscode.FileType.Directory) !== 0) {
+        return;
+      }
+    } catch {
+      // Keep the original createDirectory failure.
+    }
+    throw error;
+  }
+}
+
+export async function writeFileCreatingParents(
+  uri: vscode.Uri,
+  data: Uint8Array,
+): Promise<void> {
+  await ensureDirectory(dirname(uri));
+  await vscode.workspace.fs.writeFile(uri, data);
+}
+
+function isFilesystemRoot(uri: vscode.Uri): boolean {
+  const path = uri.path.replace(/\/+$/, "") || "/";
+  return path === "/" || path === "" || /^\/[A-Za-z]:$/.test(path);
+}
+
+function isMissingFileError(error: unknown): boolean {
+  if (error instanceof vscode.FileSystemError && error.code === "FileNotFound") {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /FileNotFound|ENOENT|not found|does not exist/i.test(message);
+}
+
+function isMissingHandleError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /No file system handle registered/i.test(message);
+}

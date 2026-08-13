@@ -23,7 +23,7 @@ NWScript Workbench Home provides:
 - offline help for project language specifications, includes, configuration, and troubleshooting
 - links to the extension and compiler repositories
 
-The Home tab opens automatically once on first run by default (`nwscript.autoOpenHome`). Turn that setting off to opt out. Home remains available from the Activity Bar, Command Palette, and editor title actions.
+The Home tab opens automatically once a workspace is loaded after the extension activates (`nwscript.autoOpenHome`, default on). Turn that setting off to opt out. Home remains available from the Activity Bar, Command Palette, and editor title actions.
 
 ## Script Browser
 
@@ -286,7 +286,7 @@ Compiles an NSS document after it is saved.
 }
 ```
 
-When `true` (default), Home opens automatically the first time the extension activates. Set to `false` to opt out of that welcome launch. Manual opens from the Activity Bar, Command Palette, and editor actions are unchanged.
+When `true` (default), Home opens automatically the first time a workspace folder is available after the extension activates. Set to `false` to opt out of that welcome launch. Manual opens from the Activity Bar, Command Palette, and editor actions are unchanged.
 
 ### `nwscript.optimizationLevel`
 
@@ -341,6 +341,8 @@ VS Code Web does not expose arbitrary host filesystem paths. For maximum compati
 - configure include paths relative to the workspace;
 - configure a custom `nwscript.nss` with a workspace-relative path;
 - allow the virtual workspace provider to handle generated NCS/NDB writes.
+
+Language definition and script downloads write through `workspace.fs` and skip creating the workspace-root handle, which vscode.dev's local-folder provider rejects.
 
 A provider may expose a read-only virtual workspace. In that case compilation still works in memory, but writing the generated NCS/NDB to that provider will fail until the workspace is writable.
 

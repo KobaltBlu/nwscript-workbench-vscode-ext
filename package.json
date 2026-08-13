@@ -203,7 +203,7 @@
         "nwscript.autoOpenHome": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically open NWScript Workbench Home on first run. Turn this off to opt out of the welcome launch.",
+          "description": "Automatically open NWScript Workbench Home the first time a workspace is available after the extension activates. Turn this off to opt out of the welcome launch.",
           "scope": "window"
         },
         "nwscript.optimizationLevel": {

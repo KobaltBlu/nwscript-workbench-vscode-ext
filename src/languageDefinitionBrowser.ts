@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { basename, dirname, workspaceFolderFor } from "./uri";
+import { basename, dirname, workspaceFolderFor, writeFileCreatingParents } from "./uri";
 
 const REPOSITORY = "KobaltBlu/nwscript-language-definitions";
 const BRANCH = "main";
@@ -153,8 +153,10 @@ export class LanguageDefinitionBrowser implements vscode.Disposable {
   private async download(entry: DefinitionEntry): Promise<void> {
     const target = await this.chooseTarget(entry, "Download Language Definition");
     if (!target) return;
-    await vscode.workspace.fs.createDirectory(dirname(target));
-    await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(await this.getSource(entry)));
+    await writeFileCreatingParents(
+      target,
+      new TextEncoder().encode(await this.getSource(entry)),
+    );
     const action = await vscode.window.showInformationMessage(`Downloaded ${basename(target)}.`, "Open");
     if (action === "Open") await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(target));
   }
