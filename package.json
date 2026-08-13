@@ -279,8 +279,8 @@
     "@vscode/test-web": "^0.0.81",
     "@vscode/vsce": "^3.6.0",
     "esbuild": "^0.25.0",
-    "typescript": "^5.9.0",
-    "ovsx": "^0.10.4"
+    "ovsx": "^0.10.4",
+    "typescript": "^5.9.0"
   },
   "homepage": "https://github.com/KobaltBlu/nwscript-workbench-vscode-ext",
   "bugs": {
