@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { buildWorkspaceActionCompat } from "./actionCompat";
 import { CompilerService, type LanguageSpecResolutionEntry, type LanguageSpecStatus } from "./compilerService";
 import { getSettings, type OptimizationLevel } from "./config";
+import { IncludeGraph, type IncludeGraphView } from "./includeGraph";
 import { basename, toWorkspacePathOrUri, workspaceFolderFor } from "./uri";
 
 const HOME_VIEW_TYPE = "nwscript.home";
@@ -23,6 +24,7 @@ export class NWScriptHomePanel implements vscode.Disposable {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly compiler: CompilerService,
+    private readonly includeGraph: IncludeGraph,
     private readonly onConfigurationChanged: () => void,
   ) {
     this.registerLanguageSpecWatchers();
@@ -96,6 +98,15 @@ export class NWScriptHomePanel implements vscode.Disposable {
       actionCompatSummary = "";
     }
 
+    let includeGraph: IncludeGraphView | undefined;
+    if (this.scope?.path.toLowerCase().endsWith(".nss")) {
+      try {
+        includeGraph = await this.includeGraph.viewFor(this.scope);
+      } catch {
+        includeGraph = undefined;
+      }
+    }
+
     if (!this.panel || serial !== this.renderSerial) {
       return;
     }
@@ -113,7 +124,9 @@ export class NWScriptHomePanel implements vscode.Disposable {
       specStatus,
       resolutionPreview,
       actionCompatSummary,
+      includeGraph,
       compileOnSave: settings.compileOnSave,
+      liveDiagnostics: settings.liveDiagnostics,
       autoOpenHome: settings.autoOpenHome,
       optimizationLevel: settings.optimizationLevel,
       generateDebug: settings.generateDebug,
@@ -218,6 +231,12 @@ export class NWScriptHomePanel implements vscode.Disposable {
         case "updateSetting":
           await this.updateSetting(message.key, message.value);
           break;
+
+        case "openUri":
+          if (message.uri) {
+            await vscode.window.showTextDocument(vscode.Uri.parse(message.uri, true));
+          }
+          return;
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -240,6 +259,7 @@ export class NWScriptHomePanel implements vscode.Disposable {
 
     switch (key) {
       case "compileOnSave":
+      case "liveDiagnostics":
       case "generateDebug":
       case "autoOpenHome":
         if (typeof value !== "boolean") {
@@ -300,6 +320,7 @@ export class NWScriptHomePanel implements vscode.Disposable {
 
 const EDITABLE_SETTINGS = new Set([
   "compileOnSave",
+  "liveDiagnostics",
   "generateDebug",
   "optimizationLevel",
   "autoOpenHome",
@@ -334,7 +355,9 @@ interface HomeHtmlOptions {
   specStatus: LanguageSpecStatus;
   resolutionPreview: ResolutionPreview;
   actionCompatSummary: string;
+  includeGraph?: IncludeGraphView;
   compileOnSave: boolean;
+  liveDiagnostics: boolean;
   autoOpenHome: boolean;
   optimizationLevel: OptimizationLevel;
   generateDebug: boolean;
@@ -351,6 +374,28 @@ interface ResolutionPreview {
   scope: string;
   truncated: boolean;
   entries: LanguageSpecResolutionEntry[];
+}
+
+function renderIncludeGraph(graph: IncludeGraphView | undefined): string {
+  if (!graph) {
+    return `<p class="muted">Includes and dependents appear here for the active script.</p>`;
+  }
+  const includeRows = graph.includes.length
+    ? graph.includes.map((node) => {
+      const label = node.unresolved ? `${node.path} (missing)` : node.path;
+      const open = node.uri
+        ? ` data-open-uri="${escapeHtml(node.uri.toString())}"`
+        : "";
+      return `<button class="kb-link"${open} ${node.uri ? "" : "disabled"}><strong>${escapeHtml(node.resRef)}</strong><span>${escapeHtml(label)}</span></button>`;
+    }).join("")
+    : `<p class="muted">No #include directives.</p>`;
+  const includedByRows = graph.includedBy.length
+    ? graph.includedBy.map((node) => {
+      const open = node.uri ? ` data-open-uri="${escapeHtml(node.uri.toString())}"` : "";
+      return `<button class="kb-link"${open}><strong>${escapeHtml(node.resRef)}</strong><span>${escapeHtml(node.path)}</span></button>`;
+    }).join("")
+    : `<p class="muted">No entry scripts include this file.</p>`;
+  return `<div class="action-list"><div class="muted">Includes</div>${includeRows}<div class="muted">Included by</div>${includedByRows}</div>`;
 }
 
 async function buildResolutionPreview(
@@ -567,10 +612,12 @@ function renderWorkbenchHomeHtml(options: HomeHtmlOptions): string {
         <aside class="stack">
           <article class="panel"><div class="panel-body"><div class="panel-head"><div><h2>Compiler</h2><p>Workspace settings.</p></div></div><div class="setting-rows">
             <div class="setting-row"><div><h3>Compile on save</h3><p>Build NSS whenever it is saved.</p></div><label class="toggle"><input type="checkbox" aria-label="Compile on save" data-setting="compileOnSave" ${options.compileOnSave ? "checked" : ""}><span></span></label></div>
+            <div class="setting-row"><div><h3>Live diagnostics</h3><p>Compile the active buffer while typing (does not write NCS).</p></div><label class="toggle"><input type="checkbox" aria-label="Live diagnostics" data-setting="liveDiagnostics" ${options.liveDiagnostics ? "checked" : ""}><span></span></label></div>
             <div class="setting-row"><div><h3>Open Home on first run</h3><p>Waits for a workspace, then opens Home once. Opt out to skip.</p></div><label class="toggle"><input type="checkbox" aria-label="Open Home on first run" data-setting="autoOpenHome" ${options.autoOpenHome ? "checked" : ""}><span></span></label></div>
             <div class="setting-row"><div><h3>Optimization</h3><p>Compiler optimization preset.</p></div><select aria-label="Optimization level" data-setting="optimizationLevel">${["O0", "O1", "O2", "O3"].map((level) => `<option value="${level}" ${level === options.optimizationLevel ? "selected" : ""}>${level}</option>`).join("")}</select></div>
             <div class="setting-row"><div><h3>Generate NDB</h3><p>Write debugger metadata.</p></div><label class="toggle"><input type="checkbox" aria-label="Generate NDB" data-setting="generateDebug" ${options.generateDebug ? "checked" : ""}><span></span></label></div>
           </div></div><div class="panel-footer"><span>More controls are available in VS Code Settings.</span><button class="button secondary" data-action="openSettings">Open settings</button></div></article>
+          <article class="panel"><div class="panel-body"><div class="panel-head"><div><h2>Include graph</h2><p>${options.includeGraph ? escapeHtml(options.includeGraph.script) : "Open an NSS file to inspect includes."}</p></div></div>${renderIncludeGraph(options.includeGraph)}</div></article>
           <article class="panel"><div class="panel-body"><div class="panel-head"><div><h2>Resolved values</h2></div></div><div class="facts"><div class="fact"><span>Workspace</span><strong>${escapeHtml(options.workspaceName)}</strong></div><div class="fact"><span>Output</span><strong>${outputSummary}</strong></div><div class="fact"><span>Include depth</span><strong>${options.maxIncludeDepth}</strong></div><div class="fact"><span>Resolve attempts</span><strong>${options.maxResolveAttempts}</strong></div></div></div></article>
         </aside>
       </div>
@@ -579,6 +626,7 @@ function renderWorkbenchHomeHtml(options: HomeHtmlOptions): string {
       <div class="section-title"><div class="eyebrow">Workspace</div><h1>Compiler settings</h1><p>Common options are editable here. Paths and limits are available in VS Code Settings.</p></div>
       <div class="settings-layout"><article class="panel"><div class="panel-body"><div class="setting-rows">
         <div class="setting-row"><div><h2>Compile on save</h2><p>Compile NWScript files automatically whenever they are saved.</p></div><label class="toggle"><input type="checkbox" aria-label="Compile on save" data-setting="compileOnSave" ${options.compileOnSave ? "checked" : ""}><span></span></label></div>
+        <div class="setting-row"><div><h2>Live diagnostics</h2><p>Background-compile the active NSS buffer without writing bytecode.</p></div><label class="toggle"><input type="checkbox" aria-label="Live diagnostics" data-setting="liveDiagnostics" ${options.liveDiagnostics ? "checked" : ""}><span></span></label></div>
         <div class="setting-row"><div><h2>Open Home on first run</h2><p>Automatically open Home the first time a workspace is available after the extension activates. Turn this off to opt out.</p></div><label class="toggle"><input type="checkbox" aria-label="Open Home on first run" data-setting="autoOpenHome" ${options.autoOpenHome ? "checked" : ""}><span></span></label></div>
         <div class="setting-row"><div><h2>Optimization level</h2><p>Select the optimization preset passed to the WebAssembly compiler.</p></div><select aria-label="Optimization level" data-setting="optimizationLevel">${["O0", "O1", "O2", "O3"].map((level) => `<option value="${level}" ${level === options.optimizationLevel ? "selected" : ""}>${level}</option>`).join("")}</select></div>
         <div class="setting-row"><div><h2>Generate NDB output</h2><p>Emit debugger metadata alongside successful NCS output.</p></div><label class="toggle"><input type="checkbox" aria-label="Generate NDB output" data-setting="generateDebug" ${options.generateDebug ? "checked" : ""}><span></span></label></div>
@@ -605,6 +653,7 @@ function renderWorkbenchHomeHtml(options: HomeHtmlOptions): string {
     document.querySelectorAll('[data-page-link]').forEach((button) => button.addEventListener('click', () => selectPage(button.dataset.pageLink)));
     document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => !button.disabled && vscode.postMessage({ type: button.dataset.action })));
     document.querySelectorAll('[data-remove-uri]').forEach((button) => button.addEventListener('click', () => vscode.postMessage({ type: 'removeLanguageSpec', uri: button.dataset.removeUri })));
+    document.querySelectorAll('[data-open-uri]').forEach((button) => button.addEventListener('click', () => vscode.postMessage({ type: 'openUri', uri: button.dataset.openUri })));
     document.querySelectorAll('[data-setting]').forEach((control) => control.addEventListener('change', () => vscode.postMessage({ type: 'updateSetting', key: control.dataset.setting, value: control.type === 'checkbox' ? control.checked : control.value })));
     selectPage(vscode.getState()?.page ?? 'overview');
   </script>

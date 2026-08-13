@@ -1,4 +1,7 @@
 import * as vscode from "vscode";
+import { findCallContext } from "./callSites";
+import { registerCodeActions } from "./codeActions";
+import { CompilerService } from "./compilerService";
 import {
   EngineApiService,
   type EngineApiModel,
@@ -7,19 +10,11 @@ import {
   type EngineSymbol,
   renderSymbolDocumentation,
 } from "./engineApi";
+import { registerInlayHints } from "./inlayHints";
+import { registerFormatting } from "./nssFormat";
 import { ResourceResolver } from "./resourceResolver";
 import { registerNavigationFeatures } from "./navigationFeatures";
-
-interface CallContext {
-  functionName: string;
-  argumentIndex: number;
-}
-
-interface DelimiterFrame {
-  kind: "paren" | "bracket" | "brace";
-  functionName?: string;
-  argumentIndex: number;
-}
+import { registerSemanticTokens } from "./semanticTokens";
 
 const NWScript_SELECTOR: vscode.DocumentSelector = [
   { language: "nwscript", scheme: "file" },
@@ -31,6 +26,7 @@ export function registerLanguageFeatures(
   context: vscode.ExtensionContext,
   engineApi: EngineApiService,
   resolver: ResourceResolver,
+  compiler: CompilerService,
 ): void {
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(
@@ -52,6 +48,10 @@ export function registerLanguageFeatures(
   );
 
   registerNavigationFeatures(context, engineApi, resolver);
+  registerCodeActions(context, engineApi, compiler, resolver);
+  registerInlayHints(context, engineApi);
+  registerFormatting(context);
+  registerSemanticTokens(context, engineApi);
 }
 
 class EngineCompletionProvider implements vscode.CompletionItemProvider {
@@ -272,116 +272,6 @@ function canAcceptArgument(fn: EngineFunction, argumentIndex: number): boolean {
   return fn.parameters.length === 0
     ? argumentIndex === 0
     : argumentIndex < fn.parameters.length;
-}
-
-function findCallContext(text: string, offset: number): CallContext | undefined {
-  const stack: DelimiterFrame[] = [];
-  let quote: string | undefined;
-  let escaped = false;
-  let lineComment = false;
-  let blockComment = false;
-
-  for (let i = 0; i < offset; i += 1) {
-    const ch = text[i];
-    const next = text[i + 1];
-
-    if (lineComment) {
-      if (ch === "\n") lineComment = false;
-      continue;
-    }
-    if (blockComment) {
-      if (ch === "*" && next === "/") {
-        blockComment = false;
-        i += 1;
-      }
-      continue;
-    }
-    if (quote) {
-      if (escaped) escaped = false;
-      else if (ch === "\\") escaped = true;
-      else if (ch === quote) quote = undefined;
-      continue;
-    }
-    if (ch === "/" && next === "/") {
-      lineComment = true;
-      i += 1;
-      continue;
-    }
-    if (ch === "/" && next === "*") {
-      blockComment = true;
-      i += 1;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      continue;
-    }
-
-    if (ch === "(") {
-      stack.push({
-        kind: "paren",
-        functionName: identifierBefore(text, i),
-        argumentIndex: 0,
-      });
-      continue;
-    }
-    if (ch === "[") {
-      stack.push({ kind: "bracket", argumentIndex: 0 });
-      continue;
-    }
-    if (ch === "{") {
-      stack.push({ kind: "brace", argumentIndex: 0 });
-      continue;
-    }
-    if (ch === ")") {
-      popDelimiter(stack, "paren");
-      continue;
-    }
-    if (ch === "]") {
-      popDelimiter(stack, "bracket");
-      continue;
-    }
-    if (ch === "}") {
-      popDelimiter(stack, "brace");
-      continue;
-    }
-    if (ch === "," && stack.at(-1)?.kind === "paren") {
-      stack[stack.length - 1].argumentIndex += 1;
-    }
-  }
-
-  for (let i = stack.length - 1; i >= 0; i -= 1) {
-    const frame = stack[i];
-    if (frame.kind === "paren" && frame.functionName) {
-      return {
-        functionName: frame.functionName,
-        argumentIndex: frame.argumentIndex,
-      };
-    }
-  }
-  return undefined;
-}
-
-function popDelimiter(stack: DelimiterFrame[], kind: DelimiterFrame["kind"]): void {
-  for (let i = stack.length - 1; i >= 0; i -= 1) {
-    if (stack[i].kind === kind) {
-      stack.splice(i, 1);
-      return;
-    }
-  }
-}
-
-function identifierBefore(text: string, offset: number): string | undefined {
-  let end = offset;
-  while (end > 0 && /\s/.test(text[end - 1])) {
-    end -= 1;
-  }
-  let start = end;
-  while (start > 0 && /[A-Za-z0-9_]/.test(text[start - 1])) {
-    start -= 1;
-  }
-  const value = text.slice(start, end);
-  return /^[A-Za-z_]\w*$/.test(value) ? value : undefined;
 }
 
 function formatParameter(parameter: EngineParameter): string {

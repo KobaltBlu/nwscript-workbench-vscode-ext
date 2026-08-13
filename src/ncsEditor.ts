@@ -9,7 +9,7 @@ import {
   toBase64,
   type NcsActionInfo,
 } from "./ncsInspectorView";
-import { basename, basenameWithoutExtension, dirname } from "./uri";
+import { basename, basenameWithoutExtension, dirname, exists } from "./uri";
 
 export const NCS_HEX_VIEW_TYPE = "nwscript.ncsHex";
 const DISASSEMBLY_SCHEME = "nwscript-disassembly";
@@ -212,36 +212,31 @@ export class NcsEditorProvider
   }
 
   async openNcsForSource(source: vscode.Uri, symbolName?: string): Promise<void> {
-    const ncsUri = source.with({
-      path: `${source.path.replace(/\.nss$/i, "")}.ncs`,
-    });
-    try {
-      await vscode.workspace.fs.stat(ncsUri);
-    } catch {
-      throw new Error(`No sibling NCS file was found for ${basename(source)}.`);
+    const outputs = this.compiler.resolveOutputUris(source);
+    if (!(await exists(outputs.ncs))) {
+      throw new Error(`No compiled NCS was found for ${basename(source)}. Compile the script first.`);
     }
 
     const name = symbolName || basenameWithoutExtension(source);
     let codeOffset: number | undefined;
-    const ndbUri = source.with({
-      path: `${source.path.replace(/\.nss$/i, "")}.ndb`,
-    });
     try {
-      const ndb = await this.compiler.inspectNdb(ndbUri);
-      const match = ndb.functions.find(
-        (fn) => fn.label.toLowerCase() === name.toLowerCase(),
-      );
-      if (match) {
-        codeOffset = match.codeOffsetStart;
+      if (await exists(outputs.ndb)) {
+        const ndb = await this.compiler.inspectNdb(outputs.ndb);
+        const match = ndb.functions.find(
+          (fn) => fn.label.toLowerCase() === name.toLowerCase(),
+        );
+        if (match) {
+          codeOffset = match.codeOffsetStart;
+        }
       }
     } catch {
       // NDB is optional; fall through to opening the inspector.
     }
 
     if (codeOffset != null) {
-      this.revealAtCodeOffset(ncsUri, codeOffset);
+      this.revealAtCodeOffset(outputs.ncs, codeOffset);
     }
-    await vscode.commands.executeCommand("vscode.openWith", ncsUri, NCS_HEX_VIEW_TYPE);
+    await vscode.commands.executeCommand("vscode.openWith", outputs.ncs, NCS_HEX_VIEW_TYPE);
   }
 
   async saveDisassembly(source: vscode.Uri): Promise<void> {

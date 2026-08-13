@@ -19,6 +19,7 @@ NWScript Workbench Home provides:
 - automatic, script-scoped language-specification resolution and conflict controls
 - inline controls for compile-on-save, optimization, and NDB output
 - summaries of include/output configuration
+- include graph for the active NSS (includes and included-by)
 - a clear explanation of how `nwscript.nss` is resolved for each script
 - recommended workspace layouts for K1, K2, and custom game targets
 - offline help for project language specifications, includes, configuration, and troubleshooting
@@ -89,9 +90,11 @@ With this layout, scripts under `kotor1/` resolve against `kotor1/nwscript.nss`,
 - Optional embedded game targets supplied by `nwscript-wasm` when present.
 - Recursive `#include` discovery and loading.
 - Configurable include search paths.
-- Compiler errors surfaced as VS Code diagnostics.
+- Compiler errors surfaced as VS Code diagnostics, including live compile-as-you-type.
 - Compiler lifecycle logs in the **NWScript Compiler** Output channel (manual compile and compile-on-save).
-- Optional compile-on-save.
+- Compile current file, compile all entry scripts, or compile a folder.
+- Optional compile-on-save, including rebuild of dependents when an include is saved.
+- Parameter inlay hints, conservative format/fold, semantic tokens, and extra snippets.
 - Optional NDB generation.
 - Configurable O0/O1/O2/O3 optimization level.
 - Read-only NCS Inspector with jump navigation, search, function list, ACTION signatures, NDB source mapping, and live reload.
@@ -190,7 +193,11 @@ The generated VSIX contains the bundled extension JavaScript and compiler WASM. 
 
 Compile the active or Explorer-selected `.nss` file.
 
-Compile progress, language-spec selection, include resolution, full error text, and output paths are written to **View → Output → NWScript Compiler**. Use **NWScript Workbench: Show Compiler Log** to open that channel, or click **Show Log** on the compile success/failure toast. Manual compiles also show a toast; compile-on-save logs quietly without focusing Output.
+**Compile All Scripts** and **Compile Folder…** compile every entry script (`void main` / `int StartingConditional`) and leave include files to be pulled in as dependencies. Failures stay in the Problems panel per file.
+
+**Open Compiled NCS** opens the `.ncs` written beside the source or under `nwscript.outputDirectory`.
+
+Compile progress, language-spec selection, include resolution, full error text, and output paths are written to **View → Output → NWScript Compiler**. Use **NWScript Workbench: Show Compiler Log** to open that channel, or click **Show Log** on the compile success/failure toast. Manual compiles also show a toast; compile-on-save and live diagnostics log quietly without focusing Output.
 
 The default output location is beside the source file:
 
@@ -297,7 +304,17 @@ A workspace-relative output directory can be configured:
 }
 ```
 
-Compiles an NSS document after it is saved.
+Compiles an NSS document after it is saved. Saving an include recompiles entry scripts that depend on it.
+
+### `nwscript.liveDiagnostics`
+
+```json
+{
+  "nwscript.liveDiagnostics": true
+}
+```
+
+Background-compiles the active NSS buffer while typing. Diagnostics update without writing `.ncs` or `.ndb`. Turn off if the exclusive WASM queue feels busy.
 
 ### `nwscript.autoOpenHome`
 

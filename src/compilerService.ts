@@ -8,6 +8,12 @@ import {
 import { compilerSettingsKey, getSettings } from "./config";
 import { CompilerDiagnostics } from "./diagnostics";
 import { CompilerLog } from "./compilerLog";
+import {
+  isEntryScriptSource,
+  isLanguageSpecFile,
+  NSS_EXCLUDE,
+  NSS_SCRIPT_FIND_LIMIT,
+} from "./nss";
 import { ResourceResolver, type ResolvedSource } from "./resourceResolver";
 import {
   basename,
@@ -17,6 +23,18 @@ import {
   resolveWorkspaceUri,
   workspaceFolderFor,
 } from "./uri";
+
+export interface CompileOptions {
+  writeOutputs?: boolean;
+  announce?: boolean;
+  generateDebug?: boolean;
+  diagnosticOwner?: "live" | "compile";
+}
+
+export interface CompileOutputUris {
+  ncs: vscode.Uri;
+  ndb: vscode.Uri;
+}
 
 export interface LanguageSpecStatus {
   kind: "configured" | "embedded" | "detected" | "missing" | "ambiguous";
@@ -64,8 +82,6 @@ export interface LanguageSpecResolutionExplain {
 
 const decoder = new TextDecoder();
 const LANGUAGE_SPEC_FIND_LIMIT = 256;
-const NSS_SCRIPT_FIND_LIMIT = 10_000;
-const NSS_EXCLUDE = "**/{.git,node_modules,dist,out,build}/**";
 
 interface FolderLanguageSpecs {
   folder: vscode.WorkspaceFolder;
@@ -80,6 +96,7 @@ export class CompilerService implements vscode.Disposable {
   private wasmBinary?: Uint8Array;
   private embeddedTargets?: string[];
   private queue: Promise<void> = Promise.resolve();
+  private batchDepth = 0;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -169,29 +186,65 @@ export class CompilerService implements vscode.Disposable {
     return resolution.sources;
   }
 
-  async compileDocument(document: vscode.TextDocument, announce = true): Promise<NWScriptCompileResult> {
+  get isBatchRunning(): boolean {
+    return this.batchDepth > 0;
+  }
+
+  beginBatch(): void {
+    this.batchDepth += 1;
+  }
+
+  endBatch(): void {
+    this.batchDepth = Math.max(0, this.batchDepth - 1);
+  }
+
+  resolveOutputUris(sourceUri: vscode.Uri): CompileOutputUris {
+    const settings = getSettings(sourceUri);
+    const outputBase = settings.outputDirectory
+      ? resolveWorkspaceUri(settings.outputDirectory, sourceUri) ?? dirname(sourceUri)
+      : dirname(sourceUri);
+    const stem = basenameWithoutExtension(sourceUri);
+    return {
+      ncs: vscode.Uri.joinPath(outputBase, `${stem}.ncs`),
+      ndb: vscode.Uri.joinPath(outputBase, `${stem}.ndb`),
+    };
+  }
+
+  async compileDocument(
+    document: vscode.TextDocument,
+    options: CompileOptions = {},
+  ): Promise<NWScriptCompileResult> {
+    const writeOutputs = options.writeOutputs !== false;
+    const announce = options.announce !== false;
+    const live = options.diagnosticOwner === "live";
+
     return this.exclusive(async () => {
       const started = Date.now();
       const source = document.getText();
       const settings = getSettings(document.uri);
+      const generateDebug = options.generateDebug ?? settings.generateDebug;
       const scriptName = basenameWithoutExtension(document.uri);
       const scriptPath = this.displayPath(document.uri, document.uri);
       const outputDirectory = settings.outputDirectory.trim()
         ? settings.outputDirectory.trim()
         : "beside source";
 
-      this.log.section(`Compile ${scriptPath}`);
-      this.log.info(`Script: ${scriptName}.nss`);
-      this.log.info(`Optimization: ${settings.optimizationLevel}`);
-      this.log.info(`Generate NDB: ${settings.generateDebug ? "yes" : "no"}`);
-      this.log.info(`Output directory: ${outputDirectory}`);
+      if (!live) {
+        this.log.section(`Compile ${scriptPath}`);
+        this.log.info(`Script: ${scriptName}.nss`);
+        this.log.info(`Optimization: ${settings.optimizationLevel}`);
+        this.log.info(`Generate NDB: ${generateDebug ? "yes" : "no"}`);
+        this.log.info(`Output directory: ${outputDirectory}`);
+      }
 
       try {
-        const specStatus = await this.getLanguageSpecStatus(document.uri);
-        if (specStatus.uri) {
-          this.log.info(`Language spec: ${specStatus.detail}`);
-        } else {
-          this.log.info(`Language spec: ${specStatus.label}`);
+        if (!live) {
+          const specStatus = await this.getLanguageSpecStatus(document.uri);
+          if (specStatus.uri) {
+            this.log.info(`Language spec: ${specStatus.detail}`);
+          } else {
+            this.log.info(`Language spec: ${specStatus.label}`);
+          }
         }
 
         const compiler = await this.getCompiler(document.uri);
@@ -204,6 +257,10 @@ export class CompilerService implements vscode.Disposable {
         this.restoreLanguageSpec(compiler);
 
         if (source.length === 0) {
+          if (live) {
+            await this.diagnostics.applyCompileSuccess(document.uri);
+            return { ok: true, code: 0, error: "", bytecode: new Uint8Array(), debugCode: new Uint8Array() };
+          }
           throw new Error(`Cannot compile ${scriptName}.nss because the file is empty.`);
         }
 
@@ -212,7 +269,7 @@ export class CompilerService implements vscode.Disposable {
           source,
           (resRef, includeSource) => {
             if (includeSource.length === 0) {
-              this.log.info(`Skipping empty include ${resRef}.nss`);
+              if (!live) this.log.info(`Skipping empty include ${resRef}.nss`);
               compiler.addSource(resRef, "\n");
               return;
             }
@@ -221,13 +278,15 @@ export class CompilerService implements vscode.Disposable {
           settings.maxResolveAttempts,
         );
 
-        this.log.info(`Includes resolved: ${includes.sources.length}`);
-        if (includes.unresolved.length > 0) {
-          this.log.info(`Includes unresolved: ${includes.unresolved.length}`);
-          for (const missing of includes.unresolved) {
-            this.log.info(
-              `  missing ${missing.resource} (from ${this.displayPath(missing.from, document.uri)}:${missing.line})`,
-            );
+        if (!live) {
+          this.log.info(`Includes resolved: ${includes.sources.length}`);
+          if (includes.unresolved.length > 0) {
+            this.log.info(`Includes unresolved: ${includes.unresolved.length}`);
+            for (const missing of includes.unresolved) {
+              this.log.info(
+                `  missing ${missing.resource} (from ${this.displayPath(missing.from, document.uri)}:${missing.line})`,
+              );
+            }
           }
         }
 
@@ -238,48 +297,57 @@ export class CompilerService implements vscode.Disposable {
         );
 
         if (!result.ok) {
-          await this.diagnostics.setCompilerError(document.uri, result.error);
-          this.log.error(`Compile failed (code ${result.code})`);
-          for (const line of result.error.split(/\r?\n/)) {
-            if (line.trim()) {
-              this.log.error(line);
+          await this.diagnostics.applyCompileFailure(
+            document.uri,
+            result.error,
+            includes.unresolved,
+          );
+          if (!live) {
+            this.log.error(`Compile failed (code ${result.code})`);
+            for (const line of result.error.split(/\r?\n/)) {
+              if (line.trim()) {
+                this.log.error(line);
+              }
             }
-          }
-          this.log.info(`Finished in ${Date.now() - started} ms`);
-          if (announce) {
-            this.log.show(true);
-            this.announceCompile(
-              "error",
-              `NWScript compile failed: ${this.firstErrorLine(result.error)}`,
-            );
+            this.log.info(`Finished in ${Date.now() - started} ms`);
+            if (announce) {
+              this.log.show(true);
+              this.announceCompile(
+                "error",
+                `NWScript compile failed: ${this.firstErrorLine(result.error)}`,
+              );
+            }
           }
           return result;
         }
 
-        this.diagnostics.clear();
-        this.log.info(`Bytecode: ${result.bytecode.byteLength} bytes`);
-        const outputs = await this.writeOutputs(document.uri, result);
-        this.log.info(`Wrote ${outputs.ncs}`);
-        if (outputs.debug) {
-          this.log.info(`Wrote ${outputs.debug}`);
-        }
-        this.log.info(`Compile succeeded in ${Date.now() - started} ms`);
-
-        if (announce) {
-          const suffix = outputs.debug ? " + NDB" : "";
-          this.announceCompile(
-            "info",
-            `Compiled ${scriptName}.nss → ${outputs.ncs}${suffix}`,
-          );
+        await this.diagnostics.applyCompileSuccess(document.uri);
+        if (writeOutputs) {
+          this.log.info(`Bytecode: ${result.bytecode.byteLength} bytes`);
+          const outputs = await this.writeOutputs(document.uri, result, generateDebug);
+          this.log.info(`Wrote ${outputs.ncs}`);
+          if (outputs.debug) {
+            this.log.info(`Wrote ${outputs.debug}`);
+          }
+          this.log.info(`Compile succeeded in ${Date.now() - started} ms`);
+          if (announce) {
+            const suffix = outputs.debug ? " + NDB" : "";
+            this.announceCompile(
+              "info",
+              `Compiled ${scriptName}.nss → ${outputs.ncs}${suffix}`,
+            );
+          }
         }
 
         return result;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.log.error(message);
-        this.log.info(`Finished in ${Date.now() - started} ms`);
-        if (announce) {
-          this.log.show(true);
+        if (!live) {
+          this.log.error(message);
+          this.log.info(`Finished in ${Date.now() - started} ms`);
+          if (announce) {
+            this.log.show(true);
+          }
         }
         throw error;
       }
@@ -300,9 +368,53 @@ export class CompilerService implements vscode.Disposable {
     });
   }
 
-  async compileUri(uri: vscode.Uri): Promise<NWScriptCompileResult> {
+  async compileUri(uri: vscode.Uri, options: CompileOptions = {}): Promise<NWScriptCompileResult> {
     const document = await vscode.workspace.openTextDocument(uri);
-    return this.compileDocument(document, true);
+    return this.compileDocument(document, options);
+  }
+
+  async findNssFiles(root?: vscode.Uri): Promise<vscode.Uri[]> {
+    if (root) {
+      try {
+        const stat = await vscode.workspace.fs.stat(root);
+        if (stat.type & vscode.FileType.File) {
+          return root.path.toLowerCase().endsWith(".nss") ? [root] : [];
+        }
+      } catch {
+        return [];
+      }
+      return vscode.workspace.findFiles(
+        new vscode.RelativePattern(root, "**/*.nss"),
+        NSS_EXCLUDE,
+        NSS_SCRIPT_FIND_LIMIT,
+      );
+    }
+
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const matches: vscode.Uri[] = [];
+    for (const folder of folders) {
+      const files = await this.findNssScriptsInFolder(folder);
+      matches.push(...files);
+    }
+    return matches;
+  }
+
+  async findEntryScripts(root?: vscode.Uri): Promise<vscode.Uri[]> {
+    const files = await this.findNssFiles(root);
+    const entries: vscode.Uri[] = [];
+    for (const uri of files) {
+      if (isLanguageSpecFile(uri)) continue;
+      let text: string;
+      try {
+        text = await this.resolver.readText(uri);
+      } catch {
+        continue;
+      }
+      if (isEntryScriptSource(text)) {
+        entries.push(uri);
+      }
+    }
+    return entries;
   }
 
   async disassembleText(uri: vscode.Uri): Promise<string> {
@@ -990,30 +1102,20 @@ export class CompilerService implements vscode.Disposable {
   private async writeOutputs(
     sourceUri: vscode.Uri,
     result: NWScriptCompileResult,
+    generateDebug: boolean,
   ): Promise<{ ncs: string; debug?: string }> {
-    const settings = getSettings(sourceUri);
-    let outputBase: vscode.Uri;
-
-    if (settings.outputDirectory) {
-      outputBase = resolveWorkspaceUri(settings.outputDirectory, sourceUri) ?? dirname(sourceUri);
-      await ensureDirectory(outputBase);
-    } else {
-      outputBase = dirname(sourceUri);
-    }
-
-    const stem = basenameWithoutExtension(sourceUri);
-    const ncsUri = vscode.Uri.joinPath(outputBase, `${stem}.ncs`);
-    await vscode.workspace.fs.writeFile(ncsUri, result.bytecode);
+    const outputs = this.resolveOutputUris(sourceUri);
+    await ensureDirectory(dirname(outputs.ncs));
+    await vscode.workspace.fs.writeFile(outputs.ncs, result.bytecode);
 
     let debug: string | undefined;
-    if (settings.generateDebug && result.debugCode.byteLength > 0) {
-      const ndbUri = vscode.Uri.joinPath(outputBase, `${stem}.ndb`);
-      await vscode.workspace.fs.writeFile(ndbUri, result.debugCode);
-      debug = this.displayPath(ndbUri, sourceUri);
+    if (generateDebug && result.debugCode.byteLength > 0) {
+      await vscode.workspace.fs.writeFile(outputs.ndb, result.debugCode);
+      debug = this.displayPath(outputs.ndb, sourceUri);
     }
 
     return {
-      ncs: this.displayPath(ncsUri, sourceUri),
+      ncs: this.displayPath(outputs.ncs, sourceUri),
       debug,
     };
   }

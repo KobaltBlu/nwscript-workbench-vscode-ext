@@ -3,16 +3,21 @@ import { CompilerService } from "./compilerService";
 import { CompilerLog } from "./compilerLog";
 import { getSettings } from "./config";
 import { CompilerDiagnostics } from "./diagnostics";
+import { IncludeGraph } from "./includeGraph";
+import { LiveDiagnostics } from "./liveDiagnostics";
+import { isEntryScriptSource, isLanguageSpecFile } from "./nss";
+import { compileDirtyDependents, compileEntryScripts } from "./projectCompile";
 import { ResourceResolver } from "./resourceResolver";
 import { NWScriptStatusBar } from "./statusBar";
 import { openNcsCompare } from "./ncsCompare";
-import { NcsEditorProvider } from "./ncsEditor";
+import { NCS_HEX_VIEW_TYPE, NcsEditorProvider } from "./ncsEditor";
 import { NWScriptHomePanel } from "./homePanel";
 import { EngineApiService } from "./engineApi";
 import { registerLanguageFeatures } from "./languageFeatures";
 import { ScriptBrowser } from "./scriptBrowser";
 import { LanguageDefinitionBrowser } from "./languageDefinitionBrowser";
 import { registerSidebar } from "./sidebar";
+import { exists } from "./uri";
 
 export function activate(context: vscode.ExtensionContext): void {
   const resolver = new ResourceResolver();
@@ -22,6 +27,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const engineApi = new EngineApiService(compiler);
   const statusBar = new NWScriptStatusBar();
   const ncsEditor = new NcsEditorProvider(compiler, engineApi);
+  const includeGraph = new IncludeGraph(compiler, resolver);
+  const liveDiagnostics = new LiveDiagnostics(compiler, statusBar);
   const scriptBrowser = new ScriptBrowser();
   let home: NWScriptHomePanel;
 
@@ -29,12 +36,13 @@ export function activate(context: vscode.ExtensionContext): void {
     compiler.invalidateCompiler();
     engineApi.invalidate();
     resolver.invalidate();
+    includeGraph.invalidate();
     const scope = vscode.window.activeTextEditor?.document.uri;
     statusBar.update(scope);
     void home?.refresh(scope);
   };
 
-  home = new NWScriptHomePanel(context, compiler, refreshCompiler);
+  home = new NWScriptHomePanel(context, compiler, includeGraph, refreshCompiler);
 
   const languageDefinitionBrowser = new LanguageDefinitionBrowser(compiler);
 
@@ -46,6 +54,8 @@ export function activate(context: vscode.ExtensionContext): void {
     engineApi,
     statusBar,
     ncsEditor,
+    includeGraph,
+    liveDiagnostics,
     scriptBrowser,
     languageDefinitionBrowser,
     home,
@@ -57,7 +67,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  registerLanguageFeatures(context, engineApi, resolver);
+  registerLanguageFeatures(context, engineApi, resolver, compiler);
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -199,12 +209,76 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     ),
 
+    vscode.commands.registerCommand(
+      "nwscript.compileAllScripts",
+      async () => {
+        try {
+          await compileEntryScripts(compiler);
+        } catch (error) {
+          showError(error);
+        }
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "nwscript.compileFolder",
+      async (resource?: vscode.Uri) => {
+        try {
+          let uri = resource;
+          if (!uri) {
+            const selected = await vscode.window.showOpenDialog({
+              canSelectMany: false,
+              canSelectFolders: true,
+              canSelectFiles: false,
+              title: "Select a folder of NSS files to compile",
+            });
+            uri = selected?.[0];
+          }
+          if (!uri) {
+            return;
+          }
+          await compileEntryScripts(compiler, uri);
+        } catch (error) {
+          showError(error);
+        }
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "nwscript.openCompiledNcs",
+      async (resource?: vscode.Uri) => {
+        try {
+          const uri = resource
+            ?? (vscode.window.activeTextEditor?.document.languageId === "nwscript"
+              ? vscode.window.activeTextEditor.document.uri
+              : undefined);
+          if (!uri?.path.toLowerCase().endsWith(".nss")) {
+            throw new Error("Open an NSS file to open its compiled NCS.");
+          }
+          const outputs = compiler.resolveOutputUris(uri);
+          if (!(await exists(outputs.ncs))) {
+            throw new Error("No compiled NCS was found. Compile the script first.");
+          }
+          await vscode.commands.executeCommand("vscode.openWith", outputs.ncs, NCS_HEX_VIEW_TYPE);
+        } catch (error) {
+          showError(error);
+        }
+      },
+    ),
+
     vscode.workspace.onDidSaveTextDocument(async (document) => {
       if (document.languageId !== "nwscript" || !getSettings(document.uri).compileOnSave) {
         return;
       }
+      if (isLanguageSpecFile(document.uri)) {
+        return;
+      }
       try {
-        await compiler.compileDocument(document, false);
+        if (isEntryScriptSource(document.getText())) {
+          await compiler.compileDocument(document, { announce: false });
+        } else {
+          await compileDirtyDependents(compiler, includeGraph, document);
+        }
       } catch (error) {
         showError(error);
       }

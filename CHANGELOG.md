@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.6
+
+### NSS editor
+
+- Live diagnostics compile the active NSS buffer while typing (no NCS write); toggle with `nwscript.liveDiagnostics`
+- Code actions: add `#include` for workspace symbols, create a missing include, download a language definition, and fix `StartingConditional`
+- Parameter inlay hints on ACTION and script function calls
+- Conservative formatter, brace/`#include` folding, and semantic token overlay for engine vs script symbols
+- Snippets for DelayCommand, AssignCommand, conversation scripts, effects, item properties, and GetScriptParameter
+
+### Project compile
+
+- **Compile All Scripts** and **Compile Folder…** build entry scripts (`main` / `StartingConditional`) with merged diagnostics
+- Compile-on-save of an include recompiles dependents that include it
+- Home shows the active script’s include graph (includes and included-by)
+- **Open Compiled NCS** uses `nwscript.outputDirectory` when set (same path as NDB peek)
+
 ## 0.1.5
 
 ### NCS Inspector

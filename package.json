@@ -2,7 +2,7 @@
   "name": "nwscript-workbench",
   "displayName": "NWScript Workbench",
   "description": "A complete NWScript workbench for VS Code and compatible editors, with WebAssembly compilation, IntelliSense, navigation, and NCS inspection.",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "KobaltBlu",
   "license": "GPL-3.0-only",
   "repository": {
@@ -47,6 +47,9 @@
     "onStartupFinished",
     "onLanguage:nwscript",
     "onCommand:nwscript.compileCurrentFile",
+    "onCommand:nwscript.compileAllScripts",
+    "onCommand:nwscript.compileFolder",
+    "onCommand:nwscript.openCompiledNcs",
     "onCommand:nwscript.showCompilerLog",
     "onCommand:nwscript.disassembleNcs",
     "onCommand:nwscript.saveNcsDisassembly",
@@ -137,6 +140,20 @@
         "icon": "$(play)"
       },
       {
+        "command": "nwscript.compileAllScripts",
+        "title": "NWScript Workbench: Compile All Scripts",
+        "icon": "$(run-all)"
+      },
+      {
+        "command": "nwscript.compileFolder",
+        "title": "NWScript Workbench: Compile Folder…",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "nwscript.openCompiledNcs",
+        "title": "NWScript Workbench: Open Compiled NCS"
+      },
+      {
         "command": "nwscript.showCompilerLog",
         "title": "NWScript Workbench: Show Compiler Log",
         "icon": "$(output)"
@@ -164,6 +181,11 @@
           "command": "nwscript.compileCurrentFile",
           "when": "resourceExtname == .nss",
           "group": "navigation"
+        },
+        {
+          "command": "nwscript.openCompiledNcs",
+          "when": "resourceExtname == .nss",
+          "group": "navigation@2"
         },
         {
           "command": "nwscript.disassembleNcs",
@@ -198,6 +220,11 @@
           "group": "navigation@10"
         },
         {
+          "command": "nwscript.openCompiledNcs",
+          "when": "resourceExtname == .nss",
+          "group": "navigation@10"
+        },
+        {
           "command": "nwscript.openNcsForSource",
           "when": "resourceExtname == .nss",
           "group": "navigation@11"
@@ -206,6 +233,21 @@
       "explorer/context": [
         {
           "command": "nwscript.compileCurrentFile",
+          "when": "resourceExtname == .nss",
+          "group": "navigation@10"
+        },
+        {
+          "command": "nwscript.compileFolder",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@9"
+        },
+        {
+          "command": "nwscript.compileAllScripts",
+          "when": "workspaceFolderCount != 0",
+          "group": "navigation@8"
+        },
+        {
+          "command": "nwscript.openCompiledNcs",
           "when": "resourceExtname == .nss",
           "group": "navigation@10"
         },
@@ -253,6 +295,12 @@
           "type": "boolean",
           "default": false,
           "description": "Compile NWScript files when they are saved.",
+          "scope": "resource"
+        },
+        "nwscript.liveDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Background-compile the active NSS buffer while typing. Does not write NCS or NDB.",
           "scope": "resource"
         },
         "nwscript.autoOpenHome": {
