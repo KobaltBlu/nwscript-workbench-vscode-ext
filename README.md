@@ -15,6 +15,7 @@ NWScript Workbench Home provides:
 - an Activity Bar sidebar entry that opens Home and links to the Script and Language Definition browsers
 - current workspace and active language-specification status
 - a workspace-wide language-definition resolution list showing every discovered `nwscript.nss` in resolution order, with coverage regions, active/shadowed/isolated states, and conflicting layouts, plus confirmed removal actions for offending files
+- ACTION signature compatibility warnings when multiple workspace `nwscript.nss` files disagree on ID, arity, or parameter types
 - automatic, script-scoped language-specification resolution and conflict controls
 - inline controls for compile-on-save, optimization, and NDB output
 - summaries of include/output configuration
@@ -41,7 +42,7 @@ Run **NWScript Workbench: Browse Language Definitions** to browse the canonical 
 
 The browser discovers games and releases from the repository metadata, supports local search, and shows each definition's engine, aliases, version, provenance, size, checksum, and source. A definition can be opened in an untitled editor or downloaded into the workspace. Missing download directories are created automatically.
 
-The catalog and selected source are fetched on demand, so an internet connection is required. Saved definitions remain available in the workspace afterward.
+The catalog and selected source are fetched on demand, so an internet connection is required. Saved definitions remain available in the workspace afterward. Previewing a catalog definition also reports whether its ACTION signatures match the workspace language specification.
 
 ### Language specification resolution
 
@@ -93,8 +94,8 @@ With this layout, scripts under `kotor1/` resolve against `kotor1/nwscript.nss`,
 - Optional compile-on-save.
 - Optional NDB generation.
 - Configurable O0/O1/O2/O3 optimization level.
-- Read-only NCS Inspector with synchronized assembly and bytecode panes.
-- Optional textual NCS disassembly for search, copy, and diff.
+- Read-only NCS Inspector with jump navigation, search, function list, ACTION signatures, NDB source mapping, and live reload.
+- Optional textual NCS disassembly, Save Disassembly, and two-file NCS compare.
 - Basic NWScript and NCS assembly syntax highlighting.
 
 ## Why this works online and offline
@@ -210,15 +211,35 @@ script.ndb
 
 Opening an `.ncs` file uses the readonly **NWScript Workbench NCS Inspector** by default. Assembly and bytecode appear side-by-side. Clicking an instruction, operand, or byte highlights the corresponding range in the other pane and updates the details panel. Layout can be switched between Split, Assembly, and Bytecode.
 
-The inspector is backed by structured decoding from `nwscript-wasm`. It does not re-parse the textual disassembly. If `nwscript.nss` cannot be resolved, ACTION IDs stay numeric and the inspector still opens.
+Use the inspector as a reading tool:
 
-![NWScript Workbench NCS hex editor and side-by-side assembly disassembly view](https://raw.githubusercontent.com/KobaltBlu/nwscript-workbench-vscode-ext/master/assets/ss-script-dissasembler-with-hex-and-asm-views.png)
+- Click `off_*` / `fn_*` address operands or the details Target to jump to that instruction
+- Search (Ctrl/Cmd+F or `/`) for hex offsets, mnemonics, ACTION names, and byte sequences
+- Open the Functions sidebar for JSR targets and NDB subroutine names
+- Arrow keys move between instructions; Enter jumps; Ctrl/Cmd+C copies the selected line
+- The inspector reloads when the `.ncs` or sibling `.ndb` changes after compile
+- ACTION details show Engine API signatures and cross-spec compatibility when `nwscript.nss` is resolved
+- A sibling `.ndb` overlays NSS file/line on the selected instruction (**Open Source at Instruction**)
 
-Malformed or truncated NCS data shows an error in the inspector instead of crashing the viewer.
+The inspector is backed by structured decoding from `nwscript-wasm`. It does not re-parse the textual disassembly. If `nwscript.nss` cannot be resolved, ACTION IDs stay numeric and the inspector still opens. Truncated files keep decoded instructions and show a partial-decode error.
+
+![NWScript Workbench NCS Inspector with synchronized assembly and bytecode panes](https://raw.githubusercontent.com/KobaltBlu/nwscript-workbench-vscode-ext/master/assets/ss-script-dissasembler-with-hex-and-asm-views.png)
 
 ### NWScript Workbench: Open NCS Disassembly as Text
 
-Opens a `<name>.ncsasm` preview of the textual WASM disassembly for search, copy, diffing, or saving outside the inspector. This no longer opens automatically when an `.ncs` file is opened.
+Opens a `<name>.ncsasm` preview of the textual WASM disassembly for search, copy, and diff. This no longer opens automatically when an `.ncs` file is opened.
+
+### NWScript Workbench: Save NCS Disassembly…
+
+Writes the textual disassembly to a file chosen with the save dialog.
+
+### NWScript Workbench: Compare NCS Files…
+
+Inspects two `.ncs` files and shows added, removed, and changed instructions. Click a row to open that instruction in the NCS Inspector.
+
+### NWScript Workbench: Open NCS at Source
+
+From an NSS editor, opens the sibling `.ncs` in the inspector. When a matching `.ndb` is present, the cursor's function is revealed at its subroutine.
 
 ## Configuration
 

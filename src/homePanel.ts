@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { buildWorkspaceActionCompat } from "./actionCompat";
 import { CompilerService, type LanguageSpecResolutionEntry, type LanguageSpecStatus } from "./compilerService";
 import { getSettings, type OptimizationLevel } from "./config";
 import { basename, toWorkspacePathOrUri, workspaceFolderFor } from "./uri";
@@ -88,6 +89,12 @@ export class NWScriptHomePanel implements vscode.Disposable {
 
     const resolutionPreview = await buildResolutionPreview(this.compiler, this.scope);
     const specStatus = resolutionPreview.status;
+    let actionCompatSummary = "";
+    try {
+      actionCompatSummary = (await buildWorkspaceActionCompat(this.compiler, this.scope)).summary;
+    } catch {
+      actionCompatSummary = "";
+    }
 
     if (!this.panel || serial !== this.renderSerial) {
       return;
@@ -105,6 +112,7 @@ export class NWScriptHomePanel implements vscode.Disposable {
       workspaceName: folder?.name ?? "No workspace folder",
       specStatus,
       resolutionPreview,
+      actionCompatSummary,
       compileOnSave: settings.compileOnSave,
       autoOpenHome: settings.autoOpenHome,
       optimizationLevel: settings.optimizationLevel,
@@ -325,6 +333,7 @@ interface HomeHtmlOptions {
   workspaceName: string;
   specStatus: LanguageSpecStatus;
   resolutionPreview: ResolutionPreview;
+  actionCompatSummary: string;
   compileOnSave: boolean;
   autoOpenHome: boolean;
   optimizationLevel: OptimizationLevel;
@@ -549,7 +558,7 @@ function renderWorkbenchHomeHtml(options: HomeHtmlOptions): string {
       <div class="overview-grid">
         <div class="stack">
           <article class="panel">
-            <div class="resolution-hero"><div class="resolution-title"><span class="state-icon ${tone}" aria-hidden="true">${stateIcon}</span><div><span class="status-label">${stateLabel}</span><h2>Language definition resolution</h2></div></div><p class="resolution-summary">${escapeHtml(preview.summary)}</p><div class="scope"><span>Evaluated for</span><code>${escapeHtml(preview.scope)}</code></div></div>
+            <div class="resolution-hero"><div class="resolution-title"><span class="state-icon ${tone}" aria-hidden="true">${stateIcon}</span><div><span class="status-label">${stateLabel}</span><h2>Language definition resolution</h2></div></div><p class="resolution-summary">${escapeHtml(preview.summary)}</p>${options.actionCompatSummary ? `<p class="resolution-summary">${escapeHtml(options.actionCompatSummary)}</p>` : ""}<div class="scope"><span>Evaluated for</span><code>${escapeHtml(preview.scope)}</code></div></div>
             <div class="definitions">${truncationNote}${definitionRows}</div>
             <div class="panel-footer"><span>${escapeHtml(options.specStatus.detail)}</span><button class="button secondary" data-page-link="guide">Resolution rules</button></div>
           </article>
@@ -862,6 +871,7 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
             <h2>nwscript.nss Resolution Preview</h2>
             <div class="status ${options.resolutionPreview.severity === "ok" ? "ok" : "warning"}">${escapeHtml(options.resolutionPreview.severity === "ok" ? "Resolved" : options.resolutionPreview.severity === "warning" ? "Conflict detected" : "Resolution problem")}</div>
             <p>${escapeHtml(options.resolutionPreview.summary)}</p>
+            ${options.actionCompatSummary ? `<p class="muted">${escapeHtml(options.actionCompatSummary)}</p>` : ""}
             <div class="muted">Scope: <code>${escapeHtml(options.resolutionPreview.scope)}</code></div>
             <div class="resolution-preview">${resolutionEntries}</div>
             <div class="actions"><button class="button secondary" data-action="refresh">Refresh Preview</button></div>

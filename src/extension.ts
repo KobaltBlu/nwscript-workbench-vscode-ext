@@ -5,6 +5,7 @@ import { getSettings } from "./config";
 import { CompilerDiagnostics } from "./diagnostics";
 import { ResourceResolver } from "./resourceResolver";
 import { NWScriptStatusBar } from "./statusBar";
+import { openNcsCompare } from "./ncsCompare";
 import { NcsEditorProvider } from "./ncsEditor";
 import { NWScriptHomePanel } from "./homePanel";
 import { EngineApiService } from "./engineApi";
@@ -20,7 +21,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const compiler = new CompilerService(context, resolver, diagnostics, compilerLog);
   const engineApi = new EngineApiService(compiler);
   const statusBar = new NWScriptStatusBar();
-  const ncsEditor = new NcsEditorProvider(compiler);
+  const ncsEditor = new NcsEditorProvider(compiler, engineApi);
   const scriptBrowser = new ScriptBrowser();
   let home: NWScriptHomePanel;
 
@@ -35,7 +36,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   home = new NWScriptHomePanel(context, compiler, refreshCompiler);
 
-  const languageDefinitionBrowser = new LanguageDefinitionBrowser();
+  const languageDefinitionBrowser = new LanguageDefinitionBrowser(compiler);
 
   context.subscriptions.push(
     resolver,
@@ -137,6 +138,61 @@ export function activate(context: vscode.ExtensionContext): void {
             return;
           }
           await ncsEditor.openDisassemblyPreview(uri);
+        } catch (error) {
+          showError(error);
+        }
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "nwscript.saveNcsDisassembly",
+      async (resource?: vscode.Uri) => {
+        try {
+          let uri = ncsUriFromCommand(resource);
+          if (!uri) {
+            const selected = await vscode.window.showOpenDialog({
+              canSelectMany: false,
+              filters: { "NWScript bytecode": ["ncs"] },
+              title: "Select an NCS file to save as disassembly",
+            });
+            uri = selected?.[0];
+          }
+          if (!uri) {
+            return;
+          }
+          await ncsEditor.saveDisassembly(uri);
+        } catch (error) {
+          showError(error);
+        }
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "nwscript.compareNcs",
+      async (resource?: vscode.Uri) => {
+        try {
+          await openNcsCompare(compiler, ncsEditor, ncsUriFromCommand(resource));
+        } catch (error) {
+          showError(error);
+        }
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "nwscript.openNcsForSource",
+      async (resource?: vscode.Uri) => {
+        try {
+          const editor = vscode.window.activeTextEditor;
+          const uri = resource
+            ?? (editor?.document.languageId === "nwscript" ? editor.document.uri : undefined);
+          if (!uri?.path.toLowerCase().endsWith(".nss")) {
+            throw new Error("Open an NSS file to jump to its sibling NCS.");
+          }
+          const wordRange = editor?.document.uri.toString() === uri.toString()
+            ? editor.document.getWordRangeAtPosition(editor.selection.active, /[A-Za-z_]\w*/)
+            : undefined;
+          const name = wordRange ? editor?.document.getText(wordRange) : undefined;
+          await ncsEditor.openNcsForSource(uri, name);
         } catch (error) {
           showError(error);
         }

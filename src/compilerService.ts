@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import {
   NWScriptCompiler,
   type NcsInspection,
+  type NdbInspection,
   type NWScriptCompileResult,
 } from "@neverwinter/nwscript-wasm";
 import { compilerSettingsKey, getSettings } from "./config";
@@ -342,6 +343,20 @@ export class CompilerService implements vscode.Disposable {
 
       throw new Error(
         "The installed nwscript-wasm build does not expose NCS inspection. Update KobaltBlu/nwscript-wasm and rebuild the extension.",
+      );
+    });
+  }
+
+  async inspectNdb(uri: vscode.Uri): Promise<NdbInspection> {
+    return this.exclusive(async () => {
+      const bytes = await vscode.workspace.fs.readFile(uri);
+      if (typeof NWScriptCompiler.inspectNdb === "function") {
+        return NWScriptCompiler.inspectNdb(bytes, {
+          moduleOptions: await this.getModuleOptions(),
+        });
+      }
+      throw new Error(
+        "The installed nwscript-wasm build does not expose NDB inspection. Update KobaltBlu/nwscript-wasm and rebuild the extension.",
       );
     });
   }

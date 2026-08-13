@@ -2,7 +2,7 @@
   "name": "nwscript-workbench",
   "displayName": "NWScript Workbench",
   "description": "A complete NWScript workbench for VS Code and compatible editors, with WebAssembly compilation, IntelliSense, navigation, and NCS inspection.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "KobaltBlu",
   "license": "GPL-3.0-only",
   "repository": {
@@ -49,6 +49,9 @@
     "onCommand:nwscript.compileCurrentFile",
     "onCommand:nwscript.showCompilerLog",
     "onCommand:nwscript.disassembleNcs",
+    "onCommand:nwscript.saveNcsDisassembly",
+    "onCommand:nwscript.compareNcs",
+    "onCommand:nwscript.openNcsForSource",
     "onCustomEditor:nwscript.ncsHex"
   ],
   "contributes": {
@@ -141,6 +144,18 @@
       {
         "command": "nwscript.disassembleNcs",
         "title": "NWScript Workbench: Open NCS Disassembly as Text"
+      },
+      {
+        "command": "nwscript.saveNcsDisassembly",
+        "title": "NWScript Workbench: Save NCS Disassembly…"
+      },
+      {
+        "command": "nwscript.compareNcs",
+        "title": "NWScript Workbench: Compare NCS Files…"
+      },
+      {
+        "command": "nwscript.openNcsForSource",
+        "title": "NWScript Workbench: Open NCS at Source"
       }
     ],
     "menus": {
@@ -156,6 +171,21 @@
           "group": "navigation"
         },
         {
+          "command": "nwscript.saveNcsDisassembly",
+          "when": "resourceExtname == .ncs || activeCustomEditorId == 'nwscript.ncsHex'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "nwscript.compareNcs",
+          "when": "resourceExtname == .ncs || activeCustomEditorId == 'nwscript.ncsHex'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "nwscript.openNcsForSource",
+          "when": "resourceExtname == .nss",
+          "group": "navigation@1"
+        },
+        {
           "command": "nwscript.openHome",
           "when": "resourceExtname == .nss",
           "group": "navigation@99"
@@ -166,6 +196,11 @@
           "command": "nwscript.compileCurrentFile",
           "when": "resourceExtname == .nss",
           "group": "navigation@10"
+        },
+        {
+          "command": "nwscript.openNcsForSource",
+          "when": "resourceExtname == .nss",
+          "group": "navigation@11"
         }
       ],
       "explorer/context": [
@@ -177,6 +212,21 @@
         {
           "command": "nwscript.disassembleNcs",
           "when": "resourceExtname == .ncs",
+          "group": "navigation@11"
+        },
+        {
+          "command": "nwscript.saveNcsDisassembly",
+          "when": "resourceExtname == .ncs",
+          "group": "navigation@12"
+        },
+        {
+          "command": "nwscript.compareNcs",
+          "when": "resourceExtname == .ncs",
+          "group": "navigation@13"
+        },
+        {
+          "command": "nwscript.openNcsForSource",
+          "when": "resourceExtname == .nss",
           "group": "navigation@11"
         }
       ]

@@ -122,6 +122,14 @@ export class EngineApiService implements vscode.Disposable {
     this.cache.clear();
   }
 
+  async getModelForUri(uri: vscode.Uri): Promise<EngineApiModel | undefined> {
+    const source = await this.compiler.getLanguageSpecSource(uri);
+    if (!source?.text) {
+      return undefined;
+    }
+    return parseEngineApi(source);
+  }
+
   async getModel(document: vscode.TextDocument): Promise<EngineApiModel | undefined> {
     const key = `${modelScopeKey(document.uri)}|${document.version}`;
     let pending = this.cache.get(key);

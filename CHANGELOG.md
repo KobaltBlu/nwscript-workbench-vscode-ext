@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.5
+
+### NCS Inspector
+
+- Click `off_*` / `fn_*` address operands or the details Target to jump to that instruction
+- Toolbar search (Ctrl/Cmd+F) for hex offsets, mnemonics, ACTION names, and byte sequences
+- Inspector reloads when the open `.ncs` (or sibling `.ndb`) changes on disk without wiping layout
+- ACTION details and hover show Engine API signatures when `nwscript.nss` is resolved
+- Keyboard navigation (Up/Down, Enter to jump, `/` to search, Ctrl+C to copy the selected instruction)
+- **Save NCS Disassembly…** writes the textual disassembly to a real file
+- Truncated or unknown opcodes keep decoded instructions and show a partial-decode error
+- Functions sidebar lists `fn_*` targets and NDB subroutine names
+- **Compare NCS Files…** diffs instructions from two `.ncs` files and opens the inspector on click
+- Sibling `.ndb` overlay maps the selected instruction to NSS file/line; **Open Source at Instruction** and **Open NCS at Source** use that mapping
+- Home and the Language Definition Browser warn when ACTION signatures differ across language specs
+
 ## 0.1.4
 
 ### NCS
