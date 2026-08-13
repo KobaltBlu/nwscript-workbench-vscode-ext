@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import {
   NWScriptCompiler,
+  type NcsInspection,
   type NWScriptCompileResult,
 } from "@neverwinter/nwscript-wasm";
 import { compilerSettingsKey, getSettings } from "./config";
@@ -15,10 +16,6 @@ import {
   resolveWorkspaceUri,
   workspaceFolderFor,
 } from "./uri";
-
-interface DisassemblerCompiler {
-  disassemble(ncs: Uint8Array): string;
-}
 
 export interface LanguageSpecStatus {
   kind: "configured" | "embedded" | "detected" | "missing" | "ambiguous";
@@ -311,15 +308,41 @@ export class CompilerService implements vscode.Disposable {
     return this.exclusive(async () => {
       const compiler = await this.getCompiler(uri);
       const bytes = await vscode.workspace.fs.readFile(uri);
-      const disassembler = compiler as unknown as DisassemblerCompiler;
 
-      if (typeof disassembler.disassemble !== "function") {
+      if (typeof compiler.disassemble !== "function") {
         throw new Error(
           "The installed nwscript-wasm build does not expose NCS disassembly. Update KobaltBlu/nwscript-wasm and rebuild the extension.",
         );
       }
 
-      return disassembler.disassemble(bytes);
+      return compiler.disassemble(bytes);
+    });
+  }
+
+  async inspectNcs(uri: vscode.Uri): Promise<NcsInspection> {
+    return this.exclusive(async () => {
+      const bytes = await vscode.workspace.fs.readFile(uri);
+
+      let compiler: NWScriptCompiler | undefined;
+      try {
+        compiler = await this.getCompiler(uri);
+      } catch {
+        compiler = undefined;
+      }
+
+      if (compiler && typeof compiler.inspectNcs === "function") {
+        return compiler.inspectNcs(bytes);
+      }
+
+      if (typeof NWScriptCompiler.inspectNcs === "function") {
+        return NWScriptCompiler.inspectNcs(bytes, {
+          moduleOptions: await this.getModuleOptions(),
+        });
+      }
+
+      throw new Error(
+        "The installed nwscript-wasm build does not expose NCS inspection. Update KobaltBlu/nwscript-wasm and rebuild the extension.",
+      );
     });
   }
 

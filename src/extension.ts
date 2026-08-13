@@ -124,12 +124,12 @@ export function activate(context: vscode.ExtensionContext): void {
       "nwscript.disassembleNcs",
       async (resource?: vscode.Uri) => {
         try {
-          let uri = resource;
+          let uri = ncsUriFromCommand(resource);
           if (!uri) {
             const selected = await vscode.window.showOpenDialog({
               canSelectMany: false,
               filters: { "NWScript bytecode": ["ncs"] },
-              title: "Select an NCS file to disassemble",
+              title: "Select an NCS file to open as text disassembly",
             });
             uri = selected?.[0];
           }
@@ -216,6 +216,27 @@ async function showHomeOnFirstRun(
 
 export function deactivate(): void {
   // VS Code disposes ExtensionContext subscriptions automatically.
+}
+
+function ncsUriFromCommand(resource?: vscode.Uri): vscode.Uri | undefined {
+  if (resource?.path.toLowerCase().endsWith(".ncs")) {
+    return resource;
+  }
+
+  const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+  if (input && typeof input === "object" && "uri" in input) {
+    const uri = (input as { uri?: vscode.Uri }).uri;
+    if (uri?.path.toLowerCase().endsWith(".ncs")) {
+      return uri;
+    }
+  }
+
+  const editorUri = vscode.window.activeTextEditor?.document.uri;
+  if (editorUri?.path.toLowerCase().endsWith(".ncs")) {
+    return editorUri;
+  }
+
+  return undefined;
 }
 
 function showError(error: unknown): void {

@@ -2,7 +2,7 @@
   "name": "nwscript-workbench",
   "displayName": "NWScript Workbench",
   "description": "A complete NWScript workbench for VS Code and compatible editors, with WebAssembly compilation, IntelliSense, navigation, and NCS inspection.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "KobaltBlu",
   "license": "GPL-3.0-only",
   "repository": {
@@ -140,7 +140,7 @@
       },
       {
         "command": "nwscript.disassembleNcs",
-        "title": "NWScript Workbench: Disassemble NCS"
+        "title": "NWScript Workbench: Open NCS Disassembly as Text"
       }
     ],
     "menus": {
@@ -148,6 +148,11 @@
         {
           "command": "nwscript.compileCurrentFile",
           "when": "resourceExtname == .nss",
+          "group": "navigation"
+        },
+        {
+          "command": "nwscript.disassembleNcs",
+          "when": "resourceExtname == .ncs || activeCustomEditorId == 'nwscript.ncsHex'",
           "group": "navigation"
         },
         {
@@ -245,7 +250,7 @@
     "customEditors": [
       {
         "viewType": "nwscript.ncsHex",
-        "displayName": "NWScript Workbench NCS Hex",
+        "displayName": "NWScript Workbench NCS Inspector",
         "selector": [
           {
             "filenamePattern": "*.ncs"

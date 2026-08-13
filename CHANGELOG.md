@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4
+
+### NCS
+
+- Opening an `.ncs` file now uses a unified NCS Inspector with synchronized assembly and bytecode panes, semantic operand highlighting, a details panel, and split/assembly/bytecode layouts
+- Textual disassembly remains available through **Open NCS Disassembly as Text** instead of opening automatically beside every NCS file
+
 ## 0.1.3
 
 ### NWScript editing

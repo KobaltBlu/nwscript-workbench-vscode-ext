@@ -93,8 +93,8 @@ With this layout, scripts under `kotor1/` resolve against `kotor1/nwscript.nss`,
 - Optional compile-on-save.
 - Optional NDB generation.
 - Configurable O0/O1/O2/O3 optimization level.
-- Read-only NCS hex editor with automatic side-by-side disassembly preview.
-- NCS disassembly when the installed `nwscript-wasm` build exposes it.
+- Read-only NCS Inspector with synchronized assembly and bytecode panes.
+- Optional textual NCS disassembly for search, copy, and diff.
 - Basic NWScript and NCS assembly syntax highlighting.
 
 ## Why this works online and offline
@@ -208,17 +208,17 @@ script.ndb
 
 ### Opening NCS files
 
-Opening an `.ncs` file uses the extension's readonly **NWScript NCS Hex** custom editor by default. The primary editor shows the binary as a conventional 16-byte-per-row hex dump with offsets and an ASCII column.
+Opening an `.ncs` file uses the readonly **NWScript Workbench NCS Inspector** by default. Assembly and bytecode appear side-by-side. Clicking an instruction, operand, or byte highlights the corresponding range in the other pane and updates the details panel. Layout can be switched between Split, Assembly, and Bytecode.
 
-At the same time, the extension resolves the project language specification and opens `<name>.ncsasm` beside the hex view as a **preview tab** without stealing focus.
+The inspector is backed by structured decoding from `nwscript-wasm`. It does not re-parse the textual disassembly. If `nwscript.nss` cannot be resolved, ACTION IDs stay numeric and the inspector still opens.
 
 ![NWScript Workbench NCS hex editor and side-by-side assembly disassembly view](https://raw.githubusercontent.com/KobaltBlu/nwscript-workbench-vscode-ext/master/assets/ss-script-dissasembler-with-hex-and-asm-views.png)
 
-If the language specification cannot be resolved, the hex view still opens normally and the assembly preview displays the disassembly error.
+Malformed or truncated NCS data shows an error in the inspector instead of crashing the viewer.
 
-### NWScript Workbench: Disassemble NCS
+### NWScript Workbench: Open NCS Disassembly as Text
 
-Reads an `.ncs` file, calls the WASM disassembler, and opens the same named `<name>.ncsasm` preview used by the automatic NCS viewer.
+Opens a `<name>.ncsasm` preview of the textual WASM disassembly for search, copy, diffing, or saving outside the inspector. This no longer opens automatically when an `.ncs` file is opened.
 
 ## Configuration
 
