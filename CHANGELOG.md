@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2
+
+### NWScript editing
+
+- Home auto-open now waits until a workspace folder is available after the extension activates
+- Fixed vscode.dev downloads of `nwscript.nss` (and scripts) that failed with "No file system handle registered (\)" when creating the workspace root directory
+
 ## 0.1.1
 
 ### NWScript editing
@@ -8,9 +15,8 @@
 - Home resolution list auto-refreshes when `nwscript.nss` files are created, deleted, renamed, or when workspace folders change
 - Fixed language-definition discovery so nested `nwscript.nss` files (for example `games/k1/nwscript.nss`) are found via filesystem walk when `findFiles` misses them in web/virtual workspaces
 - Activity Bar sidebar icon for NWScript Workbench that opens Home and exposes Script/Language Definition browsers (monochrome SVG for reliable Activity Bar tinting)
-- `nwscript.autoOpenHome` setting (default on) to opt out of opening Home automatically once a workspace is available after activation
+- `nwscript.autoOpenHome` setting (default on) to opt out of opening Home automatically on first run
 - Compiler activity is logged to the **NWScript Compiler** Output channel, with **Show Compiler Log** and a **Show Log** action on compile toasts
-- Fixed vscode.dev downloads of `nwscript.nss` (and scripts) that failed with "No file system handle registered (\)" when creating the workspace root directory
 - Redesigned Workbench Home with a resolution-first dashboard, responsive navigation, streamlined settings, and an integrated project guide
 - Home panel resolution preview for active, shadowed, and ambiguous `nwscript.nss` definitions, with conflict-removal actions
 - Metadata-driven Language Definition Browser for previewing and downloading canonical game definitions

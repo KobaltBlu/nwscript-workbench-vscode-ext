@@ -2,7 +2,7 @@
   "name": "nwscript-workbench",
   "displayName": "NWScript Workbench",
   "description": "A complete NWScript workbench for VS Code and compatible editors, with WebAssembly compilation, IntelliSense, navigation, and NCS inspection.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "KobaltBlu",
   "license": "GPL-3.0-only",
   "repository": {
