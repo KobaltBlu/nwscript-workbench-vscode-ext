@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3
+
+### NWScript editing
+
+- Compile no longer fails with "Invalid source registration" for empty scripts, empty includes, or an empty `nwscript.nss`
+- Empty (0-byte) `nwscript.nss` files are ignored for language-spec resolution so they cannot shadow nested real definitions
+- Home resolution list always offers Remove for discovered `nwscript.nss` files, including when only one definition is present
+
 ## 0.1.2
 
 ### NWScript editing

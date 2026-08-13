@@ -266,7 +266,7 @@ export class NWScriptHomePanel implements vscode.Disposable {
 
     const displayPath = toWorkspacePathOrUri(target, this.scope ?? target);
     const action = await vscode.window.showWarningMessage(
-      `Remove ${displayPath} to resolve the language-definition conflict?`,
+      `Remove ${displayPath}?`,
       { modal: true, detail: "The file will be moved to the operating system trash when supported." },
       "Move to Trash",
     );
@@ -404,8 +404,7 @@ function renderWorkbenchHomeHtml(options: HomeHtmlOptions): string {
   const outputSummary = options.outputDirectory
     ? escapeHtml(options.outputDirectory)
     : "Next to source script";
-  const canRemove = tone !== "ok";
-  const definitionRows = renderResolutionList(preview.entries, canRemove);
+  const definitionRows = renderResolutionList(preview.entries, true);
   const truncationNote = preview.truncated
     ? `<p class="list-note">Discovery may be incomplete; the per-folder definition scan hit its limit.</p>`
     : "";
@@ -476,7 +475,8 @@ function renderWorkbenchHomeHtml(options: HomeHtmlOptions): string {
     .definition-row:last-child { border-bottom: 0; }
     .definition-mark { width: 8px; height: 8px; border-radius: 50%; background: var(--vscode-descriptionForeground); }
     .definition-row.active .definition-mark { background: var(--vscode-testing-iconPassed); box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-testing-iconPassed) 17%, transparent); }
-    .definition-row.shadowed .definition-mark { background: var(--vscode-editorWarning-foreground); }
+    .definition-row.shadowed .definition-mark, .definition-row.ignored .definition-mark { background: var(--vscode-editorWarning-foreground); }
+    .definition-row.ignored { opacity: .72; }
     .definition-row.isolated .definition-mark { background: var(--vscode-textLink-foreground); }
     .definition-row.ambiguous .definition-mark { background: var(--vscode-errorForeground); }
     .definition-topline { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
@@ -623,13 +623,12 @@ function renderHomeHtml(options: HomeHtmlOptions): string {
     ? escapeHtml(options.outputDirectory)
     : "Beside source NSS";
 
-  const showResolutionActions = options.resolutionPreview.severity !== "ok";
   const resolutionEntries = options.resolutionPreview.entries.length
     ? options.resolutionPreview.entries.map((entry) => `
         <div class="spec-row ${entry.state}">
           <span class="spec-state">${escapeHtml(entry.state)}</span>
           <div><code>${escapeHtml(entry.path)}</code><span>${escapeHtml(entry.detail)}</span></div>
-          ${showResolutionActions && entry.removable ? `<button class="remove-spec" data-remove-uri="${escapeHtml(entry.uri)}" title="Remove ${escapeHtml(entry.path)}">Remove…</button>` : ""}
+          ${entry.removable ? `<button class="remove-spec" data-remove-uri="${escapeHtml(entry.uri)}" title="Remove ${escapeHtml(entry.path)}">Remove…</button>` : ""}
         </div>`).join("")
     : `<div class="muted">No workspace nwscript.nss files were discovered.</div>`;
 

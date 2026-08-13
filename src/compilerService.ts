@@ -42,7 +42,8 @@ export type LanguageSpecResolutionEntryState =
   | "shadowed"
   | "isolated"
   | "ambiguous"
-  | "available";
+  | "available"
+  | "ignored";
 
 export interface LanguageSpecResolutionEntry {
   uri: string;
@@ -77,6 +78,7 @@ interface FolderLanguageSpecs {
 export class CompilerService implements vscode.Disposable {
   private compiler?: NWScriptCompiler;
   private compilerKey?: string;
+  private languageSpecBytes?: Uint8Array;
   private wasmBinary?: Uint8Array;
   private embeddedTargets?: string[];
   private queue: Promise<void> = Promise.resolve();
@@ -91,12 +93,14 @@ export class CompilerService implements vscode.Disposable {
   dispose(): void {
     this.compiler?.dispose();
     this.compiler = undefined;
+    this.languageSpecBytes = undefined;
   }
 
   invalidateCompiler(): void {
     this.compiler?.dispose();
     this.compiler = undefined;
     this.compilerKey = undefined;
+    this.languageSpecBytes = undefined;
   }
 
   async getEmbeddedTargets(): Promise<string[]> {
@@ -196,13 +200,26 @@ export class CompilerService implements vscode.Disposable {
 
         // The identifier specification has already been parsed during create().
         // Reset script/include resources so deleted or renamed includes cannot
-        // remain stale between compilations.
+        // remain stale between compilations. clearSources() also drops the
+        // language spec, so re-register it before adding includes.
         compiler.clearSources();
+        this.restoreLanguageSpec(compiler);
+
+        if (source.length === 0) {
+          throw new Error(`Cannot compile ${scriptName}.nss because the file is empty.`);
+        }
 
         const includes = await this.resolver.preloadIncludes(
           document.uri,
           source,
-          (resRef, includeSource) => compiler.addSource(resRef, includeSource),
+          (resRef, includeSource) => {
+            if (includeSource.length === 0) {
+              this.log.info(`Skipping empty include ${resRef}.nss`);
+              compiler.addSource(resRef, "\n");
+              return;
+            }
+            compiler.addSource(resRef, includeSource);
+          },
           settings.maxResolveAttempts,
         );
 
@@ -338,6 +355,13 @@ export class CompilerService implements vscode.Disposable {
       }
     }
 
+    if (!languageSpec || languageSpec.byteLength === 0) {
+      throw new Error(
+        `The language specification ${this.displayPath(languageSpecUri, scope ?? languageSpecUri)} is empty. ` +
+        "Download a canonical nwscript.nss from the Language Definition Browser.",
+      );
+    }
+
     this.compiler = await NWScriptCompiler.create({
       languageSpec,
       writeDebug: settings.generateDebug,
@@ -345,8 +369,16 @@ export class CompilerService implements vscode.Disposable {
       optimizationFlags: settings.optimizationFlags,
       moduleOptions,
     });
+    this.languageSpecBytes = languageSpec;
     this.compilerKey = key;
     return this.compiler;
+  }
+
+  private restoreLanguageSpec(compiler: NWScriptCompiler): void {
+    if (!this.languageSpecBytes || this.languageSpecBytes.byteLength === 0) {
+      return;
+    }
+    compiler.addSource("nwscript", this.languageSpecBytes);
   }
 
   /**
@@ -409,9 +441,10 @@ export class CompilerService implements vscode.Disposable {
       folderResults.push({ folder, matches: result.matches, truncated: result.truncated });
     }
 
-    const candidates = folderResults
+    const discovered = folderResults
       .flatMap((entry) => entry.matches)
       .sort((a, b) => a.path.localeCompare(b.path));
+    const candidates = await this.filterUsableLanguageSpecs(discovered);
 
     const displayScope = scope
       ? this.displayPath(scope, scope)
@@ -476,17 +509,15 @@ export class CompilerService implements vscode.Disposable {
 
     // Root-level nwscript.nss is authoritative and should not depend on
     // workspace.findFiles() returning zero-segment "**/" matches.
+    // Empty (0-byte) stubs are ignored so a failed download cannot shadow
+    // nested real definitions.
     const rootSpec = vscode.Uri.joinPath(folder.uri, "nwscript.nss");
-    try {
-      const stat = await vscode.workspace.fs.stat(rootSpec);
-      if ((stat.type & vscode.FileType.Directory) === 0) {
-        return rootSpec;
-      }
-    } catch {
-      // Fall through to recursive project discovery.
+    if (await this.isUsableLanguageSpec(rootSpec)) {
+      return rootSpec;
     }
 
-    const candidates = await this.findProjectLanguageSpecs(scope);
+    const discovered = await this.findProjectLanguageSpecs(scope);
+    const candidates = await this.filterUsableLanguageSpecs(discovered);
     const selected = selectNearestLanguageSpec(candidates, scope);
     if (selected !== undefined || candidates.length === 0) {
       return selected;
@@ -602,17 +633,23 @@ export class CompilerService implements vscode.Disposable {
     scope: vscode.Uri | undefined,
     multiRoot: boolean,
   ): Promise<{ entries: LanguageSpecResolutionEntry[]; rootShadowing: boolean }> {
-    const rootSpec = candidates.find((uri) => this.isWorkspaceRootLanguageSpec(folder, uri));
+    const usable = await this.filterUsableLanguageSpecs(candidates);
+    const emptyKeys = new Set(
+      candidates
+        .filter((uri) => !usable.some((item) => this.sameUri(item, uri)))
+        .map((uri) => uri.toString()),
+    );
+    const rootSpec = usable.find((uri) => this.isWorkspaceRootLanguageSpec(folder, uri));
     const rootKey = rootSpec?.toString();
     const hasRoot = rootKey !== undefined;
-    const rootShadowing = hasRoot && candidates.length > 1;
+    const rootShadowing = hasRoot && usable.length > 1;
     const activeKey = status.uri?.toString();
     const scopeFolder = workspaceFolderFor(scope);
     const inScopeFolder = scopeFolder?.index === folder.index;
 
     const scriptUris = await this.findNssScriptsInFolder(folder);
     const coverageByUri = this.computeCoverageCounts(
-      candidates,
+      usable,
       scriptUris,
       hasRoot,
       rootKey ?? "",
@@ -638,11 +675,15 @@ export class CompilerService implements vscode.Disposable {
       const scriptCount = coverageByUri.get(key) ?? 0;
       const isActive = key === activeKey;
       const isRoot = key === rootKey;
+      const isEmpty = emptyKeys.has(key);
 
       let state: LanguageSpecResolutionEntryState;
       let detail: string;
 
-      if (hasRoot && !isRoot) {
+      if (isEmpty) {
+        state = "ignored";
+        detail = "Empty file · ignored for resolution";
+      } else if (hasRoot && !isRoot) {
         state = isActive ? "active" : "shadowed";
         detail = isActive
           ? `Selected for the active resource · shadowed coverage ${coverageLabel}`
@@ -656,7 +697,7 @@ export class CompilerService implements vscode.Disposable {
       } else if (hasRoot && isRoot) {
         state = "available";
         detail = `Authoritative workspace-root definition · covers ${coverageLabel} · ${scriptCount} script${scriptCount === 1 ? "" : "s"}`;
-      } else if (!hasRoot && candidates.length > 1) {
+      } else if (!hasRoot && usable.length > 1) {
         state = "isolated";
         detail = `Isolated game tree · covers ${coverageLabel} · ${scriptCount} script${scriptCount === 1 ? "" : "s"}`;
       } else {
@@ -849,6 +890,25 @@ export class CompilerService implements vscode.Disposable {
       a.authority === b.authority &&
       a.path === b.path
     );
+  }
+
+  private async isUsableLanguageSpec(uri: vscode.Uri): Promise<boolean> {
+    try {
+      const stat = await vscode.workspace.fs.stat(uri);
+      return (stat.type & vscode.FileType.Directory) === 0 && stat.size > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  private async filterUsableLanguageSpecs(uris: vscode.Uri[]): Promise<vscode.Uri[]> {
+    const usable: vscode.Uri[] = [];
+    for (const uri of uris) {
+      if (await this.isUsableLanguageSpec(uri)) {
+        usable.push(uri);
+      }
+    }
+    return usable;
   }
 
   private async getModuleOptions(): Promise<Record<string, unknown>> {
