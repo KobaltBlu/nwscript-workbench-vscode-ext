@@ -4,506 +4,55 @@ Complete NWScript development tools for **VS Code Desktop** and **VS Code for th
 
 The extension uses [`KobaltBlu/nwscript-wasm`](https://github.com/KobaltBlu/nwscript-wasm/tree/master), which packages the native NWScript compiler as WebAssembly. The compiler JavaScript is bundled into the extension and the `.wasm` binary is shipped inside the VSIX, so **no native compiler, Nim, Python, Emscripten, or network access is required at runtime**.
 
-![NWScript Workbench](https://raw.githubusercontent.com/KobaltBlu/nwscript-workbench-vscode-ext/master/assets/logo.png)
+![NWScript Workbench](assets/logo.png)
 
-## NWScript Workbench Home
+![NWScript editor showing engine-aware IntelliSense and API documentation](assets/ss-script-editor-with-intellisense.png)
 
-Run **NWScript Workbench: Open Home** to open the extension control center in an editor tab.
+![NWScript Workbench NCS Inspector with synchronized assembly and bytecode panes](assets/ss-script-dissasembler-with-hex-and-asm-views.png)
 
-NWScript Workbench Home provides:
+## Highlights
 
-- an Activity Bar sidebar entry that opens Home and links to the Script and Language Definition browsers
-- current workspace and active language-specification status
-- a workspace-wide language-definition resolution list showing every discovered `nwscript.nss` in resolution order, with coverage regions, active/shadowed/isolated states, and conflicting layouts, plus confirmed removal actions for offending files
-- ACTION signature compatibility warnings when multiple workspace `nwscript.nss` files disagree on ID, arity, or parameter types
-- automatic, script-scoped language-specification resolution and conflict controls
-- inline controls for compile-on-save, optimization, and NDB output
-- summaries of include/output configuration
-- include graph for the active NSS (includes and included-by)
-- a clear explanation of how `nwscript.nss` is resolved for each script
-- recommended workspace layouts for K1, K2, and custom game targets
-- offline help for project language specifications, includes, configuration, and troubleshooting
-- links to the extension and compiler repositories
+- Compile `.nss` to `.ncs` entirely through WebAssembly on desktop and in the browser
+- Workbench Home for workspace status, language-spec resolution, and compile controls
+- Script Browser and Language Definition Browser for vanilla KOTOR/TSL sources and `nwscript.nss` catalogs
+- Engine-aware IntelliSense, navigation, snippets, and diagnostics from the active language specification
+- Read-only NCS Inspector, textual disassembly, and two-file NCS compare
+- Basic NWScript and NCS assembly syntax highlighting
+- Virtual-workspace friendly: uses only VS Code URI / `workspace.fs` APIs
 
-The Home tab opens automatically once a workspace is loaded after the extension activates (`nwscript.autoOpenHome`, default on). Turn that setting off to opt out. Home remains available from the Activity Bar, Command Palette, and editor title actions.
+## Quick start
 
-## Script Browser
+1. Install **NWScript Workbench** from the Marketplace (or load a local VSIX).
+2. Open a workspace that contains your scripts and an `nwscript.nss` language specification.
+3. Run **NWScript Workbench: Open Home**, or compile with **NWScript Workbench: Compile Current File**.
 
-Run **NWScript Workbench: Browse Scripts** to search the decompiled KOTOR and TSL source catalog maintained by [KOTOR Community Patches](https://github.com/KOTORCommunityPatches/Vanilla_KOTOR_Script_Source).
+For multi-game workspaces, put each game in its own folder with its own `nwscript.nss`. See [Getting started](docs/getting-started.md) and [Language specifications](docs/language-specifications.md).
 
-The browser fetches the repository catalog from GitHub. Search operates locally over script names and repository paths; selecting a result fetches only that script for preview. You can open a source copy in an untitled NWScript editor or download it through VS Code's URI-aware save dialog into a desktop, browser, or virtual workspace.
+## Requirements
 
-![NWScript Workbench Script Browser showing searchable KOTOR and TSL source with an inline preview](https://raw.githubusercontent.com/KobaltBlu/nwscript-workbench-vscode-ext/master/assets/ss-script-browser.png)
+- VS Code `^1.100.0` or a compatible editor/host (Desktop, `vscode.dev`, `github.dev`, Codespaces web)
+- Internet connection only when using the Script Browser or Language Definition Browser
 
-No upstream script source is packaged with NWScript Workbench. An internet connection is required, and downloaded sources remain subject to the upstream repository and game-content terms.
+## Documentation
 
-## Language Definition Browser
-
-Run **NWScript Workbench: Browse Language Definitions** to browse the canonical `nwscript.nss` catalog from [KobaltBlu/nwscript-language-definitions](https://github.com/KobaltBlu/nwscript-language-definitions).
-
-The browser discovers games and releases from the repository metadata, supports local search, and shows each definition's engine, aliases, version, provenance, size, checksum, and source. A definition can be opened in an untitled editor or downloaded into the workspace. Missing download directories are created automatically.
-
-The catalog and selected source are fetched on demand, so an internet connection is required. Saved definitions remain available in the workspace afterward. Previewing a catalog definition also reports whether its ACTION signatures match the workspace language specification.
-
-### Language specification resolution
-
-The extension resolves the `nwscript.nss` used by a script in this order:
-
-1. **Workspace-root specification** — `nwscript.nss` at the root of the active workspace folder.
-2. **Nearest ancestor specification** — the closest `nwscript.nss` above the script being edited or compiled.
-3. **Single discovered project specification** — if exactly one `nwscript.nss` exists in the workspace, it is used automatically.
-4. **Ambiguous** — if multiple specifications remain possible, the extension does not guess; use the Home resolution list to identify coverage and remove conflicts.
-
-A workspace-root `nwscript.nss` is authoritative for that workspace folder. For projects that contain scripts for multiple games, we recommend placing each game in its own subfolder with its own `nwscript.nss` rather than putting a shared specification at the workspace root.
-
-Recommended layout:
-
-```text
-My NWScript Workspace/
-├─ kotor1/
-│  ├─ nwscript.nss
-│  ├─ includes/
-│  └─ scripts/
-│     └─ k1_script.nss
-│
-├─ kotor2/
-│  ├─ nwscript.nss
-│  ├─ includes/
-│  └─ scripts/
-│     └─ k2_script.nss
-│
-└─ custom-game/
-   ├─ nwscript.nss
-   └─ scripts/
-      └─ custom_script.nss
-```
-
-With this layout, scripts under `kotor1/` resolve against `kotor1/nwscript.nss`, scripts under `kotor2/` resolve against `kotor2/nwscript.nss`, and custom projects can provide their own language specification independently.
-
-
-## Features
-
-- Compile `.nss` files to `.ncs` entirely through WebAssembly.
-- Runs in the browser extension host and the desktop extension host.
-- Uses only VS Code URI / `workspace.fs` APIs at runtime, including virtual workspaces.
-- **Script-scoped language specifications**: the extension automatically discovers the applicable `nwscript.nss` from each script's workspace and ancestor folders.
-- Optional embedded game targets supplied by `nwscript-wasm` when present.
-- Recursive `#include` discovery and loading.
-- Configurable include search paths.
-- Compiler errors surfaced as VS Code diagnostics, including live compile-as-you-type.
-- Compiler lifecycle logs in the **NWScript Compiler** Output channel (manual compile and compile-on-save).
-- Compile current file, compile all entry scripts, or compile a folder.
-- Optional compile-on-save, including rebuild of dependents when an include is saved.
-- Parameter inlay hints, conservative format/fold, semantic tokens, and extra snippets.
-- Optional NDB generation.
-- Configurable O0/O1/O2/O3 optimization level.
-- Read-only NCS Inspector with jump navigation, search, function list, ACTION signatures, NDB source mapping, and live reload.
-- Optional textual NCS disassembly, Save Disassembly, and two-file NCS compare.
-- Basic NWScript and NCS assembly syntax highlighting.
-
-## Why this works online and offline
-
-The extension has only a `browser` entry point. VS Code therefore runs the same web-extension bundle in:
-
-- VS Code Desktop
-- `vscode.dev`
-- `github.dev`
-- browser-based Codespaces
-- other VS Code-compatible web extension hosts
-
-The runtime does not import Node's `fs`, `path`, or child-process APIs. Workspace and extension resources are read and written through `vscode.workspace.fs`.
-
-During the extension build, `@neverwinter/nwscript-wasm` is pulled from:
-
-```text
-https://github.com/KobaltBlu/nwscript-wasm/tree/master
-```
-
-Its JavaScript wrapper is bundled into `dist/web/extension.js` and its compiled WASM is copied to:
-
-```text
-dist/web/nwscript-compiler.wasm
-```
-
-At runtime the extension reads the WASM bytes from its own installation and passes them directly to Emscripten.
-
-## Development
-
-Requirements for building the extension itself:
-
-- Node.js 22+
-- npm
-- Git
-
-You **do not** need Emscripten locally unless you are rebuilding `nwscript-wasm` itself.
-
-Install dependencies:
-
-```bash
-npm install
-```
-
-Build:
-
-```bash
-npm run build
-```
-
-The output is:
-
-```text
-dist/web/extension.js
-dist/web/extension.js.map
-dist/web/nwscript-compiler.wasm
-```
-
-## Run in VS Code Desktop as a web extension
-
-Open this project in VS Code and run the **Run Web Extension** launch configuration.
-
-It launches an Extension Development Host with:
-
-```text
---extensionDevelopmentKind=web
-```
-
-so the exact browser-hosted extension code is tested even on desktop.
-
-## Run in a browser
-
-The project includes `@vscode/test-web`:
-
-```bash
-npm run test-web
-```
-
-This builds the extension and launches a local VS Code for the Web instance.
-
-## Package a VSIX
-
-```bash
-npm run package
-```
-
-The generated VSIX contains the bundled extension JavaScript and compiler WASM. A user installing that VSIX on desktop does not need access to GitHub or npm afterward.
-
-## Commands
-
-### NWScript Workbench: Compile Current File
-
-Compile the active or Explorer-selected `.nss` file.
-
-**Compile All Scripts** and **Compile Folder…** compile every entry script (`void main` / `int StartingConditional`) and leave include files to be pulled in as dependencies. Failures stay in the Problems panel per file.
-
-**Open Compiled NCS** opens the `.ncs` written beside the source or under `nwscript.outputDirectory`.
-
-Compile progress, language-spec selection, include resolution, full error text, and output paths are written to **View → Output → NWScript Compiler**. Use **NWScript Workbench: Show Compiler Log** to open that channel, or click **Show Log** on the compile success/failure toast. Manual compiles also show a toast; compile-on-save and live diagnostics log quietly without focusing Output.
-
-The default output location is beside the source file:
-
-```text
-script.nss
-script.ncs
-```
-
-If NDB generation is enabled:
-
-```text
-script.nss
-script.ncs
-script.ndb
-```
-
-### Opening NCS files
-
-Opening an `.ncs` file uses the readonly **NWScript Workbench NCS Inspector** by default. Assembly and bytecode appear side-by-side. Clicking an instruction, operand, or byte highlights the corresponding range in the other pane and updates the details panel. Layout can be switched between Split, Assembly, and Bytecode.
-
-Use the inspector as a reading tool:
-
-- Click `off_*` / `fn_*` address operands or the details Target to jump to that instruction
-- Search (Ctrl/Cmd+F or `/`) for hex offsets, mnemonics, ACTION names, and byte sequences
-- Open the Functions sidebar for JSR targets and NDB subroutine names
-- Arrow keys move between instructions; Enter jumps; Ctrl/Cmd+C copies the selected line
-- The inspector reloads when the `.ncs` or sibling `.ndb` changes after compile
-- ACTION details show Engine API signatures and cross-spec compatibility when `nwscript.nss` is resolved
-- A sibling `.ndb` overlays NSS file/line on the selected instruction (**Open Source at Instruction**)
-
-The inspector is backed by structured decoding from `nwscript-wasm`. It does not re-parse the textual disassembly. If `nwscript.nss` cannot be resolved, ACTION IDs stay numeric and the inspector still opens. Truncated files keep decoded instructions and show a partial-decode error.
-
-![NWScript Workbench NCS Inspector with synchronized assembly and bytecode panes](https://raw.githubusercontent.com/KobaltBlu/nwscript-workbench-vscode-ext/master/assets/ss-script-dissasembler-with-hex-and-asm-views.png)
-
-### NWScript Workbench: Open NCS Disassembly as Text
-
-Opens a `<name>.ncsasm` preview of the textual WASM disassembly for search, copy, and diff. This no longer opens automatically when an `.ncs` file is opened.
-
-### NWScript Workbench: Save NCS Disassembly…
-
-Writes the textual disassembly to a file chosen with the save dialog.
-
-### NWScript Workbench: Compare NCS Files…
-
-Inspects two `.ncs` files and shows added, removed, and changed instructions. Click a row to open that instruction in the NCS Inspector.
-
-### NWScript Workbench: Open NCS at Source
-
-From an NSS editor, opens the sibling `.ncs` in the inspector. When a matching `.ndb` is present, the cursor's function is revealed at its subroutine.
-
-## Configuration
-
-The extension automatically searches the active script's workspace folder for `nwscript.nss`.
-
-Detection prefers a workspace-root `nwscript.nss`, then the nearest `nwscript.nss` in an ancestor directory of the script being compiled or edited. If no ancestor applies and exactly one specification exists in the workspace, that file is used automatically. Multiple unrelated specifications are treated as ambiguous so the extension does not guess between game targets.
-
-For multi-game workspaces, place each game's scripts below its own game folder and keep that folder's `nwscript.nss` alongside them. Avoid a workspace-root `nwscript.nss` when the workspace contains multiple independent game environments, because the root specification is authoritative for the workspace folder.
-
-### `nwscript.includePaths`
-
-Example:
-
-```json
-{
-  "nwscript.includePaths": [
-    "scripts",
-    "scripts/includes",
-    "shared"
-  ]
-}
-```
-
-Include resolution checks, in order:
-
-1. The directory containing the including NSS file.
-2. `nwscript.includePaths`.
-3. A lazily generated workspace-wide `.nss` resource index.
-
-The extension recursively scans discovered includes and preloads them into the in-memory compiler resource manager.
-
-### `nwscript.outputDirectory`
-
-Default:
-
-```json
-""
-```
-
-Empty writes generated files beside the source NSS.
-
-A workspace-relative output directory can be configured:
-
-```json
-{
-  "nwscript.outputDirectory": "compiled"
-}
-```
-
-### `nwscript.compileOnSave`
-
-```json
-{
-  "nwscript.compileOnSave": true
-}
-```
-
-Compiles an NSS document after it is saved. Saving an include recompiles entry scripts that depend on it when `nwscript.compileDependentsOnSave` is on.
-
-### `nwscript.liveDiagnostics`
-
-```json
-{
-  "nwscript.liveDiagnostics": true
-}
-```
-
-Background-compiles the active NSS buffer while typing. Diagnostics update without writing `.ncs` or `.ndb`. Turn off if the exclusive WASM queue feels busy.
-
-### `nwscript.compileDependentsOnSave`
-
-```json
-{
-  "nwscript.compileDependentsOnSave": true
-}
-```
-
-When compile-on-save is enabled, saving an include recompiles entry scripts that `#include` it.
-
-### Editor extras
-
-All default to `true`. Turn them off in Settings or on Workbench Home.
-
-| Setting | Effect |
+| Topic | Description |
 | --- | --- |
-| `nwscript.inlayHints` | Parameter names on function and ACTION calls |
-| `nwscript.semanticTokens` | Engine / include / script symbol overlay |
-| `nwscript.formatting` | Conservative brace-indent formatter |
-| `nwscript.folding` | Brace and grouped `#include` folding |
-| `nwscript.codeActions` | Quick fixes (add include, StartingConditional, language definition) |
-| `nwscript.includeGraph` | Include graph on Workbench Home |
-| `nwscript.actionCompat` | ACTION signature comparison on Home, Language Definition Browser, and NCS Inspector |
-
-### NCS Inspector
-
-All default to `true`.
-
-| Setting | Effect |
-| --- | --- |
-| `nwscript.ncsReloadOnChange` | Reload when the open `.ncs` or sibling `.ndb` changes |
-| `nwscript.ncsActionSignatures` | Engine API ACTION names and signatures |
-| `nwscript.ncsNdbOverlay` | Sibling `.ndb` source mapping |
-
-### `nwscript.autoOpenHome`
-
-```json
-{
-  "nwscript.autoOpenHome": false
-}
-```
-
-When `true` (default), Home opens automatically the first time a workspace folder is available after the extension activates. Set to `false` to opt out of that welcome launch. Manual opens from the Activity Bar, Command Palette, and editor actions are unchanged.
-
-### `nwscript.optimizationLevel`
-
-Supported values:
-
-```text
-O0
-O1
-O2
-O3
-```
-
-Default: `O1`.
-
-### `nwscript.generateDebug`
-
-Generate `.ndb` output when supported by the compiler:
-
-```json
-{
-  "nwscript.generateDebug": true
-}
-```
-
-### `nwscript.maxIncludeDepth`
-
-Maximum native compiler include depth. Default: `32`.
-
-### `nwscript.maxResolveAttempts`
-
-Maximum number of include resources recursively loaded before a compilation. Default: `64`.
-
-## Diagnostics
-
-Compiler errors such as:
-
-```text
-k_test.nss(12): ERROR: DECLARATION DOES NOT MATCH PARAMETERS
-```
-
-are converted into VS Code diagnostics and attached to the corresponding NSS file and line.
-
-The same compiler messages are appended to the **NWScript Compiler** Output channel so multi-line errors and compile-on-save runs remain inspectable after the toast disappears.
-
-The extension also pre-resolves `#include` resources before invoking the compiler. This makes the extension usable even with older `nwscript-wasm` builds whose native `FILE NOT FOUND` diagnostic does not identify the missing resref.
-
-## Browser / virtual workspace considerations
-
-VS Code Web does not expose arbitrary host filesystem paths. For maximum compatibility:
-
-- keep NSS source and includes inside the opened workspace;
-- configure include paths relative to the workspace;
-- configure a custom `nwscript.nss` with a workspace-relative path;
-- allow the virtual workspace provider to handle generated NCS/NDB writes.
-
-Language definition and script downloads write through `workspace.fs` and skip creating the workspace-root handle, which vscode.dev's local-folder provider rejects.
-
-A provider may expose a read-only virtual workspace. In that case compilation still works in memory, but writing the generated NCS/NDB to that provider will fail until the workspace is writable.
-
-## Updating the compiler dependency
-
-The dependency intentionally points at the `master` branch of `KobaltBlu/nwscript-wasm`:
-
-```json
-{
-  "dependencies": {
-    "@neverwinter/nwscript-wasm": "github:KobaltBlu/nwscript-wasm#master"
-  }
-}
-```
-
-To refresh a local checkout to the latest compiler commit:
-
-```bash
-npm install
-```
-
-If a lockfile is already pinning an older Git commit, update the dependency explicitly or regenerate the lockfile before producing a release.
-
-## Architecture
-
-```text
-VS Code / vscode.dev
-        │
-        ▼
-Web Extension Host
-        │
-        ├── VS Code workspace.fs
-        │      ├── NSS source
-        │      ├── includes
-        │      └── NCS/NDB output
-        │
-        ▼
-CompilerService
-        │
-        ├── ResourceResolver
-        ├── Diagnostics
-        ├── CompilerLog (Output → NWScript Compiler)
-        └── @neverwinter/nwscript-wasm
-                    │
-                    ▼
-              WebAssembly
-                    │
-                    ▼
-              NCS / NDB
-```
+| [Getting started](docs/getting-started.md) | Home, Script Browser, first compile, recommended layouts |
+| [Language specifications](docs/language-specifications.md) | How `nwscript.nss` is resolved; Language Definition Browser |
+| [Commands](docs/commands.md) | Command palette reference and compile output |
+| [Configuration](docs/configuration.md) | Settings reference |
+| [NCS Inspector](docs/ncs-inspector.md) | Binary inspection, disassembly, and compare |
+| [Editor](docs/editor.md) | IntelliSense and VS Code navigation |
+| [Web and virtual workspaces](docs/web-and-virtual-workspaces.md) | Browser hosts and virtual FS tips |
+| [Architecture](docs/architecture.md) | Extension host and WASM packaging |
+| [Development](docs/development.md) | Build, run, package, and update the compiler |
 
 ## Licensing
 
 The extension source is distributed under GPL-3.0-only because the packaged extension includes the linked NWScript compiler WebAssembly artifact, which is subject to the upstream compiler's GPL-3.0 licensing.
 
-See `THIRD_PARTY_NOTICES.md` for the upstream compiler dependency.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the upstream compiler dependency.
 
-## Engine-aware editor intelligence
+## Support
 
-The extension builds IntelliSense directly from the automatically resolved `nwscript.nss` language specification. Project specifications are parsed into a cached engine API model, so moving between game trees changes the editor API without rebuilding the extension.
-
-![NWScript editor showing engine-aware IntelliSense and API documentation](https://raw.githubusercontent.com/KobaltBlu/nwscript-workbench-vscode-ext/master/assets/ss-script-editor-with-intellisense.png)
-
-The NWScript editor provides:
-
-- engine function completions with parameter and return-type metadata
-- engine constants and global symbols from the active language specification
-- snippet-style function insertion with parameter placeholders
-- signature help on `(` and `,`, including defaults and active-argument highlighting
-- multiple signatures when the active specification declares the same function name more than once
-- rich hover cards with the declaration, return type, parameter documentation, engine ACTION ID, active-spec availability, and curated NWScript notes for selected APIs
-
-ACTION IDs are derived from function declaration order in the active `nwscript.nss`, matching the engine command table represented by the language specification.
-
-Language specifications must be accessible in the workspace so compilation and editor intelligence resolve the same API for each script.
-
-## Native VS Code navigation
-
-NWScript symbols participate in VS Code's normal language-navigation workflow. The extension resolves symbols using the same translation-unit model as IntelliSense: declarations in the current script take precedence over recursively included NSS files, which take precedence over the active `nwscript.nss` engine API.
-
-Supported editor features include:
-
-- Go to Definition and Peek Definition for script, include, and engine symbols
-- Go to Declaration using the same NWScript symbol resolution
-- Find All References across NSS files that actually see the same declaration through their include/spec scope
-- Rename Symbol for user script/include symbols; engine API symbols are intentionally read-only
-- Document Highlights for the active symbol
-- Outline / Go to Symbol in Editor for top-level functions, constants, and globals
-- Go to Symbol in Workspace across NSS files
-- clickable `#include` resource links and Go to Definition on include resrefs
-
-Reference and rename searches ignore comments and string literals and validate each candidate NSS file against its resolved translation-unit symbol model instead of performing a blind workspace text replacement.
+See [SUPPORT.md](SUPPORT.md) for bug reports and feature requests.

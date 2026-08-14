@@ -1,5 +1,7 @@
 # Publishing
 
+Build and local run steps are documented in [docs/development.md](docs/development.md).
+
 ## Package locally
 
 ```bash

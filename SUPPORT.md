@@ -5,3 +5,5 @@ Please report bugs and feature requests through the GitHub issue tracker:
 https://github.com/KobaltBlu/nwscript-workbench-vscode-ext/issues
 
 When reporting a compiler or editor issue, include the extension version, VS Code-compatible editor/version, relevant `nwscript.nss` source, and a minimal script that reproduces the problem when possible.
+
+User and contributor documentation lives in [docs/](docs/), starting with [Getting started](docs/getting-started.md).
